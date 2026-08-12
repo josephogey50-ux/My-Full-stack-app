@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="AKWABA 001 — Nigerian Passport Travels registration portal." />
+    <meta name="theme-color" content="#1A3A2E" />
+    <!--
+      Content-Security-Policy: blunts XSS by restricting what the page can
+      load/execute. connect-src is scoped to this app's own backend (the
+      production Render URL + local dev on :5000, matching the fallback in
+      src/lib/api.ts) — if VITE_API_BASE ever points somewhere else, add
+      that origin here too. style-src needs 'unsafe-inline' because several
+      components set inline styles via React's style={{...}} prop; there's
+      no script-src 'unsafe-inline'/'unsafe-eval', so this doesn't open up
+      script injection.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://akwaba-back-end.onrender.com http://localhost:5000 http://localhost:* ws://localhost:*; base-uri 'self'; form-action 'self'; object-src 'none';" />
+    <title>AKWABA 001 — Nigerian Passport Travels</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

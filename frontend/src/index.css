@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-rust: #C1440E;
+  --color-rust-dark: #9B3508;
+  --color-rust-light: #E8613A;
+  --color-gold: #D4920A;
+  --color-gold-light: #F0B429;
+  --color-forest: #1A3A2E;
+  --color-forest-mid: #264D3B;
+  --color-cream: #F5EDD8;
+  --color-cream-dark: #EBDDBF;
+  --color-ink: #1C1410;
+  --color-ink-mid: #3D2B1F;
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: #F5EDD8;
+  color: #1C1410;
+  margin: 0;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-custom {
+  font-family: var(--font-mono);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@keyframes toast-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}

@@ -1,0 +1,357 @@
+import express from 'express';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import rateLimit from 'express-rate-limit';
+import Participant from '../model/Participant.js';
+import { requireParticipantAuth } from '../middleware/auth.js';
+import { generateCsrfToken } from '../middleware/csrf.js';
+import { TOKEN_COOKIE, CSRF_COOKIE, authCookieOptions, csrfCookieOptions, clearCookieOptions } from '../utils/cookies.js';
+import {
+  ALLOWED_DOC_TYPES,
+  ALLOWED_ROOM_PREFS,
+  ALLOWED_PLANS,
+  ALLOWED_RECEIPT_MIME_TYPES,
+  MAX_RECEIPT_BYTES,
+  isValidEmail,
+  isValidPhone,
+  isValidPin,
+  isNonEmptyString,
+  oneOf,
+  safeContentDisposition,
+  normalizePhone
+} from '../utils/validators.js';
+import { TRIP_TOTAL_NAIRA, MIN_INITIAL_DEPOSIT_NGN } from '../utils/utils_payments.js';
+
+const router = express.Router();
+
+// ─── Multer: buffer in memory, never written to local disk ───
+// Render's filesystem is ephemeral — anything written to disk is lost on
+// every redeploy/restart. Receipts are embedded in the participant's
+// MongoDB document instead, so they persist with everything else.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_RECEIPT_BYTES },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_RECEIPT_MIME_TYPES.includes(file.mimetype)) {
+      return cb(new Error('Invalid file type. Upload JPG, PNG, or PDF only.'));
+    }
+    cb(null, true);
+  }
+});
+
+function handleUpload(req, res, next) {
+  upload.single('receipt')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'File upload failed.' });
+    next();
+  });
+}
+
+const JWT_EXPIRY = '12h';
+const JWT_EXPIRY_MS = 12 * 60 * 60 * 1000;
+const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_MINUTES = 15;
+
+function issueToken(email) {
+  return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
+}
+
+function setAuthCookies(res, token) {
+  res.cookie(TOKEN_COOKIE, token, authCookieOptions(JWT_EXPIRY_MS));
+  res.cookie(CSRF_COOKIE, generateCsrfToken(), csrfCookieOptions(JWT_EXPIRY_MS));
+}
+
+function publicParticipant(p) {
+  const amountPaid = p.checkout?.amountPaid || 0;
+  const remainingBalance = Math.max(0, Math.round((TRIP_TOTAL_NAIRA - amountPaid) * 100) / 100);
+  return {
+    surname: p.surname,
+    firstName: p.firstName,
+    emailAddress: p.emailAddress,
+    whatsAppNumber: p.whatsAppNumber,
+    currentStep: p.currentStep,
+    logistics: p.logistics,
+    checkout: {
+      plan: p.checkout?.plan,
+      paymentStatus: p.checkout?.paymentStatus,
+      amountPaid,
+      tripTotal: TRIP_TOTAL_NAIRA,
+      remainingBalance,
+      // Mirrors the rule enforced server-side in /api/payments/initiate —
+      // only relevant before any payment has landed. See utils_payments.js.
+      minNextPayment: amountPaid <= 0 ? Math.min(MIN_INITIAL_DEPOSIT_NGN, remainingBalance) : 100,
+      hasReceipt: !!p.checkout?.receipt?.contentType,
+      receiptUploadedAt: p.checkout?.receipt?.uploadedAt || null
+    }
+  };
+}
+
+// ─── Login: rate-limited at the IP level, lockout at the account level ───
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // generic anti-abuse ceiling per IP; account lockout below is the real defense
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts from this network. Please try again shortly.' }
+});
+
+// ─── 1. REGISTRATION STEP ROUTE ───
+router.post('/register/step', handleUpload, async (req, res) => {
+  const { step, emailAddress, ...incomingData } = req.body;
+
+  const currentStepNum = parseInt(step, 10);
+  if (!step || isNaN(currentStepNum) || currentStepNum < 1 || currentStepNum > 3) {
+    return res.status(400).json({ error: 'Valid step number is required.' });
+  }
+
+  if (!isValidEmail(emailAddress)) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+  const normalizedEmail = emailAddress.toLowerCase().trim();
+
+  try {
+    // ── STEP 1 — Profile Creation ──
+    if (currentStepNum === 1) {
+      if (!isNonEmptyString(incomingData.surname) || !isNonEmptyString(incomingData.firstName)) {
+        return res.status(400).json({ error: 'Surname and first name are required.' });
+      }
+      if (!isValidPhone(incomingData.whatsAppNumber)) {
+        return res.status(400).json({ error: 'A valid WhatsApp number is required.' });
+      }
+      if (!isValidPin(incomingData.accountPin)) {
+        return res.status(400).json({ error: 'A 4-digit PIN is required.' });
+      }
+
+      const normalizedPhone = normalizePhone(incomingData.whatsAppNumber);
+
+      const existingUser = await Participant.findOne({
+        $or: [{ emailAddress: normalizedEmail }, { whatsAppNumber: normalizedPhone }]
+      });
+      if (existingUser) {
+        const field = existingUser.emailAddress === normalizedEmail ? 'email address' : 'WhatsApp number';
+        return res.status(409).json({ error: `An account with this ${field} already exists.` });
+      }
+
+      const hashedPin = await bcrypt.hash(incomingData.accountPin.trim(), 12);
+
+      const newParticipant = new Participant({
+        surname: incomingData.surname.trim(),
+        firstName: incomingData.firstName.trim(),
+        emailAddress: normalizedEmail,
+        whatsAppNumber: normalizedPhone,
+        accountPin: hashedPin,
+        currentStep: 2
+      });
+
+      await newParticipant.save();
+      return res.status(201).json({ message: 'Profile created!', nextStep: 2 });
+    }
+
+    // Steps 2 & 3 act on an existing participant
+    const participant = await Participant.findOne({ emailAddress: normalizedEmail });
+    if (!participant) {
+      return res.status(404).json({ error: 'Session not found. Please restart from Step 1.' });
+    }
+    if (participant.currentStep < currentStepNum) {
+      return res.status(400).json({ error: `Please complete Step ${participant.currentStep} first.` });
+    }
+
+    let updatePayload = {};
+
+    // ── STEP 2 — Logistics ──
+    if (currentStepNum === 2) {
+      const docType = incomingData.docType || 'International Passport';
+      const roomPreference = incomingData.roomPreference || 'match';
+
+      if (!oneOf(docType, ALLOWED_DOC_TYPES)) {
+        return res.status(400).json({ error: 'Invalid travel document type.' });
+      }
+      if (!oneOf(roomPreference, ALLOWED_ROOM_PREFS)) {
+        return res.status(400).json({ error: 'Invalid room preference.' });
+      }
+      if (roomPreference === 'paired' && !isNonEmptyString(incomingData.roommateName)) {
+        return res.status(400).json({ error: "Roommate's full name is required for paired rooming." });
+      }
+      if (!isNonEmptyString(incomingData.emergencyContact)) {
+        return res.status(400).json({ error: 'An emergency contact is required.' });
+      }
+
+      updatePayload = {
+        $set: {
+          'logistics.docType': docType,
+          'logistics.roomPreference': roomPreference,
+          'logistics.roommateName': roomPreference === 'paired' ? incomingData.roommateName.trim() : '',
+          'logistics.emergencyContact': incomingData.emergencyContact.trim(),
+          currentStep: 3
+        }
+      };
+    }
+
+    // ── STEP 3 — Checkout ──
+    else if (currentStepNum === 3) {
+      const plan = incomingData.plan || 'Full Payment';
+      if (!oneOf(plan, ALLOWED_PLANS)) {
+        return res.status(400).json({ error: 'Invalid payment plan.' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ error: 'A payment receipt is required.' });
+      }
+
+      updatePayload = {
+        $set: {
+          'checkout.plan': plan,
+          // Payment status/amount are organizer-confirmed only (see /api/admin routes) —
+          // never taken from the registrant's own request.
+          'checkout.receipt': {
+            data: req.file.buffer,
+            contentType: req.file.mimetype,
+            filename: req.file.originalname,
+            size: req.file.size,
+            uploadedAt: new Date()
+          },
+          currentStep: 4
+        }
+      };
+    }
+
+    const updatedParticipant = await Participant.findOneAndUpdate(
+      { emailAddress: normalizedEmail },
+      updatePayload,
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      message: `Step ${currentStepNum} saved.`,
+      nextStep: updatedParticipant.currentStep
+    });
+
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'An account with this email or WhatsApp number already exists.' });
+    }
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });
+  }
+});
+
+// ─── 2. AUTHENTICATION / LOGIN ───
+router.post('/login', loginLimiter, async (req, res) => {
+  const { loginPhone, loginPin } = req.body;
+
+  if (!isValidPhone(loginPhone) || !isValidPin(loginPin)) {
+    return res.status(400).json({ error: 'A valid phone number and 4-digit PIN are required.' });
+  }
+
+  const normalizedLoginPhone = normalizePhone(loginPhone);
+
+  try {
+    const participant = await Participant.findOne({ whatsAppNumber: normalizedLoginPhone });
+
+    // Same generic error whether the number doesn't exist or the PIN is wrong —
+    // don't let the response shape reveal which one it was.
+    const genericError = { error: 'Invalid phone number or PIN.' };
+    if (!participant) return res.status(401).json(genericError);
+
+    if (participant.isLocked()) {
+      const minutesLeft = Math.ceil((participant.security.lockUntil - Date.now()) / 60000);
+      return res.status(429).json({ error: `Too many attempts. Try again in ${minutesLeft} minute(s).` });
+    }
+
+    const isMatch = await bcrypt.compare(loginPin.trim(), participant.accountPin);
+
+    if (!isMatch) {
+      // ── Atomic increment via aggregation-pipeline update ──
+      // The previous code read failedLoginAttempts into a JS variable,
+      // incremented it in memory, and wrote the whole document back with
+      // .save(). Two concurrent requests both read the same pre-increment
+      // value and each independently wrote back current+1, so the counter
+      // lost updates under any parallel traffic (effectively +1 per burst
+      // instead of accumulating), making the 5-attempt lockout bypassable.
+      //
+      // A pipeline update is evaluated and applied by MongoDB as a single
+      // atomic per-document operation — concurrent requests are serialized
+      // by the database itself, so every failed attempt is counted exactly
+      // once no matter how many requests arrive in parallel.
+      await Participant.updateOne(
+        { whatsAppNumber: normalizedLoginPhone },
+        [
+          {
+            $set: {
+              'security.failedLoginAttempts': {
+                $cond: [
+                  { $gte: [{ $add: ['$security.failedLoginAttempts', 1] }, LOCKOUT_THRESHOLD] },
+                  0,
+                  { $add: ['$security.failedLoginAttempts', 1] }
+                ]
+              },
+              'security.lockUntil': {
+                $cond: [
+                  { $gte: [{ $add: ['$security.failedLoginAttempts', 1] }, LOCKOUT_THRESHOLD] },
+                  new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000),
+                  '$security.lockUntil'
+                ]
+              }
+            }
+          }
+        ]
+      );
+      return res.status(401).json(genericError);
+    }
+
+    // Reset on success. A plain $set here is already a single atomic write,
+    // so no read-modify-write race applies on this path.
+    await Participant.updateOne(
+      { whatsAppNumber: normalizedLoginPhone },
+      { $set: { 'security.failedLoginAttempts': 0, 'security.lockUntil': null } }
+    );
+
+    const token = issueToken(participant.emailAddress);
+    setAuthCookies(res, token);
+
+    res.status(200).json({
+      message: 'Login successful!',
+      participant: publicParticipant(participant)
+    });
+
+  } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });
+  }
+});
+
+// ─── 3. LOGOUT ───
+router.post('/logout', (req, res) => {
+  res.clearCookie(TOKEN_COOKIE, clearCookieOptions());
+  res.clearCookie(CSRF_COOKIE, clearCookieOptions());
+  res.status(200).json({ success: true });
+});
+
+// ─── 4. OWN PROFILE (auth required) ───
+router.get('/participant/me', requireParticipantAuth, async (req, res) => {
+  try {
+    const participant = await Participant.findOne({ emailAddress: req.participantEmail });
+    if (!participant) return res.status(404).json({ error: 'Participant record not found.' });
+
+    res.status(200).json({ success: true, participant: publicParticipant(participant) });
+  } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });
+  }
+});
+
+// ─── 5. OWN RECEIPT ───
+router.get('/participant/me/receipt', requireParticipantAuth, async (req, res) => {
+  try {
+    const participant = await Participant.findOne({ emailAddress: req.participantEmail }).select('+checkout.receipt.data');
+    const receipt = participant?.checkout?.receipt;
+    if (!receipt || !receipt.data) return res.status(404).json({ error: 'No receipt on file.' });
+
+    res.set('Content-Type', receipt.contentType);
+    res.set('Content-Disposition', safeContentDisposition(receipt.filename));
+    res.send(receipt.data);
+  } catch (error) {
+    res.status(500).json({ error: 'Could not retrieve receipt.' });
+  }
+});
+
+export default router;

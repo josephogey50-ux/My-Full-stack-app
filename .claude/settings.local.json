@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://localhost:5000/api/public/convoy)",
+      "Bash(curl -s http://localhost:5000/)",
+      "Bash(curl -s -i http://localhost:5000/api/public/convoy)",
+      "Bash(netstat -ano)",
+      "Bash(powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\\\"name='node.exe'\\\\\" | Select-Object ProcessId,CommandLine | Format-List\")",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 192,16832,11268,11088 | Select-Object Id,StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 192,11268 -Force\")",
+      "Bash(npm run *)",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object {$_.CommandLine -like '\\\\''*server.js*'\\\\''} | Select-Object ProcessId,CommandLine')",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object {$_.CommandLine -like '\\\\''*npm-cli.js* start*'\\\\'' -or $_.CommandLine -like '\\\\''*server.js*'\\\\''} | Select-Object ProcessId,ParentProcessId,CommandLine | Format-Table -AutoSize')",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 11088,16832,1448,22716 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(find /c/Users/User/Downloads -maxdepth 1 -newermt \"2026-08-12\" -type f 2>/dev/null | head -50; echo \"---temp---\"; find \"/c/Users/User/AppData/Local/Temp/claude\" -maxdepth 4 -iname \"*.jpg\" -o -iname \"*.png\" -o -iname \"*.jpeg\" 2>/dev/null | head -50)",
+      "Bash(find \"/c/Users/User\" -maxdepth 8 \\\\\\( -iname \"*.jpg\" -o -iname \"*.jpeg\" -o -iname \"*.png\" -o -iname \"*.webp\" \\\\\\) -mmin -180 2>/dev/null | grep -v -i \"AppData/Local/Packages\\\\|node_modules\\\\|\\\\.git\" | head -50)",
+      "Bash(powershell -Command \"Get-ChildItem -Force | Select-Object Name\")",
+      "Bash(powershell -Command \"Get-ChildItem backend -Force | Select-Object Name\")",
+      "Bash(powershell -Command \"Get-ChildItem frontend -Force | Select-Object Name\")",
+      "WebFetch(domain:akwaba-back-end.onrender.com)",
+      "Bash(vercel --version)",
+      "Bash(render --version)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\).length\\)\")",
+      "Bash(node -e ' *)"
+    ]
+  }
+}
