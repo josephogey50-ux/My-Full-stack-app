@@ -36,7 +36,6 @@ export default function Nav() {
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <button onClick={() => goToSection('top')} className="flex items-center gap-2.5">
           <img src={logo} alt="AKWABA 001 logo" className="w-9 h-9 rounded-full object-cover" />
-          <span className="font-display text-xl font-semibold text-cream tracking-tight">AKWABA 001</span>
         </button>
 
         <div className="hidden md:flex gap-1">
