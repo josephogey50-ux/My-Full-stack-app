@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login, submitRegistrationStep, ApiError } from '../lib/api'
+import { login, submitRegistrationStep, forgotPin, ApiError } from '../lib/api'
 import { useToast } from './Toast'
 import WhatsAppIcon from './WhatsAppIcon'
 
@@ -58,8 +58,6 @@ export default function RegisterPanel() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
   const [accountPin, setAccountPin] = useState('')
   const [pinVisible, setPinVisible] = useState(false)
-  const [receipt, setReceipt] = useState<File | null>(null)
-  const [dragOver, setDragOver] = useState(false)
   const [busy, setBusy] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -68,6 +66,11 @@ export default function RegisterPanel() {
   const [loginPin, setLoginPin] = useState('')
   const [loginPinVisible, setLoginPinVisible] = useState(false)
   const [loginBusy, setLoginBusy] = useState(false)
+
+  // ── Forgot-PIN state ──
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotBusy, setForgotBusy] = useState(false)
 
   useEffect(() => {
     const restored = loadDraft()
@@ -141,30 +144,13 @@ export default function RegisterPanel() {
     }
   }
 
-  function validateAndSetReceipt(file: File) {
-    const allowed = ['image/jpeg', 'image/png', 'application/pdf']
-    if (!allowed.includes(file.type)) {
-      toast('Invalid format. Upload JPG, PNG, or PDF only.', 'error')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast('File exceeds 5MB limit.', 'error')
-      return
-    }
-    setReceipt(file)
-  }
-
   async function handleStep3(e: React.FormEvent) {
     e.preventDefault()
-    if (!receipt) {
-      toast('A payment receipt is required.', 'error')
-      return
-    }
     setBusy(true)
     try {
-      await submitRegistrationStep(3, { emailAddress: draft.emailAddress, plan: draft.plan }, receipt)
+      await submitRegistrationStep(3, { emailAddress: draft.emailAddress, plan: draft.plan })
       localStorage.removeItem(DRAFT_KEY)
-      toast('Registration complete! Log in with your WhatsApp number and PIN to view your dashboard.', 'success')
+      toast('Registration complete! Log in to pay securely with Paystack from your dashboard.', 'success')
       setTimeout(() => setTab('login'), 1200)
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Submission failed. Please try again.', 'error')
@@ -184,6 +170,20 @@ export default function RegisterPanel() {
       toast(err instanceof ApiError ? err.message : 'Login failed. Check your details.', 'error')
     } finally {
       setLoginBusy(false)
+    }
+  }
+
+  async function handleForgotPin() {
+    setForgotBusy(true)
+    try {
+      const result = await forgotPin(forgotEmail.trim())
+      toast(result.message, 'success')
+      setForgotOpen(false)
+      setForgotEmail('')
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.', 'error')
+    } finally {
+      setForgotBusy(false)
     }
   }
 
@@ -407,56 +407,10 @@ export default function RegisterPanel() {
                       </select>
                     </Field>
 
-                    <div className="bg-ink/60 rounded-xl p-4 text-sm space-y-1.5">
-                      <div className="flex justify-between text-cream-dark">
-                        <span>Bank</span>
-                        <span className="text-cream font-semibold">MONIEPOINT</span>
-                      </div>
-                      <div className="flex justify-between text-cream-dark">
-                        <span>Account Number</span>
-                        <span className="text-cream font-semibold">6166119553</span>
-                      </div>
-                      <div className="flex justify-between text-cream-dark">
-                        <span>Account Name</span>
-                        <span className="text-cream font-semibold">TrootServices</span>
-                      </div>
-                      <p className="text-gold-light text-xs pt-2 leading-relaxed">
-                        ⚠️ After payment, send your receipt via WhatsApp to{' '}
-                        <a href="https://wa.me/2348064749255" target="_blank" rel="noopener" className="underline">
-                          +234 806 474 9255
-                        </a>
-                      </p>
+                    <div className="bg-ink/60 rounded-xl p-4 text-sm text-cream-dark leading-relaxed">
+                      💳 Payment is handled securely by Paystack — you'll pay from your dashboard right after you log
+                      in, no bank transfer needed.
                     </div>
-
-                    <Field label="Upload Payment Receipt (Image or PDF)">
-                      <label
-                        onDragOver={(e) => {
-                          e.preventDefault()
-                          setDragOver(true)
-                        }}
-                        onDragLeave={() => setDragOver(false)}
-                        onDrop={(e) => {
-                          e.preventDefault()
-                          setDragOver(false)
-                          if (e.dataTransfer.files[0]) validateAndSetReceipt(e.dataTransfer.files[0])
-                        }}
-                        className={`flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed p-6 cursor-pointer transition ${
-                          dragOver ? 'border-gold bg-gold/10' : 'border-white/15'
-                        }`}
-                      >
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,application/pdf"
-                          className="hidden"
-                          onChange={(e) => e.target.files?.[0] && validateAndSetReceipt(e.target.files[0])}
-                        />
-                        <span className="text-2xl mb-2">📁</span>
-                        <p className="text-cream-dark text-sm">
-                          {receipt ? `${receipt.name} (${(receipt.size / 1024 / 1024).toFixed(2)} MB)` : 'Click or drag & drop your payment receipt here'}
-                        </p>
-                        <p className="text-cream-dark/60 text-xs mt-1">Max 5MB · JPG, PNG, or PDF</p>
-                      </label>
-                    </Field>
 
                     <div className="flex gap-3 mt-2">
                       <button type="button" onClick={() => setStep(2)} className={secondaryBtnClass}>
@@ -504,12 +458,37 @@ export default function RegisterPanel() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => toast('Please contact us on WhatsApp to reset your PIN.', 'info')}
+                    onClick={() => setForgotOpen((v) => !v)}
                     className="text-xs text-gold mt-2 underline"
                   >
                     Forgot PIN?
                   </button>
                 </Field>
+
+                {forgotOpen && (
+                  <div className="bg-ink/60 rounded-xl p-4 flex flex-col gap-2.5">
+                    <p className="text-cream-dark text-xs leading-relaxed">
+                      Enter your registered email and we'll send you a link to set a new PIN.
+                    </p>
+                    <input
+                      required
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="name@example.com"
+                      className={inputClass}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleForgotPin}
+                      disabled={forgotBusy || !forgotEmail.trim()}
+                      className="bg-white/10 hover:bg-white/15 disabled:opacity-60 text-cream py-2.5 rounded-full text-sm font-semibold transition"
+                    >
+                      {forgotBusy ? 'Sending…' : 'Send Reset Link'}
+                    </button>
+                  </div>
+                )}
+
                 <button type="submit" disabled={loginBusy} className={`${primaryBtnClass} w-full`}>
                   {loginBusy ? 'Checking…' : 'Access Dashboard →'}
                 </button>

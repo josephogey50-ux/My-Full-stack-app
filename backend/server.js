@@ -43,6 +43,12 @@ if (!Number.isFinite(Number(process.env.TRIP_TOTAL_AMOUNT_NGN)) || Number(proces
   process.exit(1);
 }
 
+// Non-fatal: only the forgot-PIN email feature depends on these, so a
+// missing Gmail app password shouldn't take the whole API down.
+if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+  logger.warn('GMAIL_USER/GMAIL_APP_PASSWORD not set — forgot-PIN emails will fail until configured.');
+}
+
 const app = express();
 
 // Render sits behind a reverse proxy — needed for express-rate-limit and

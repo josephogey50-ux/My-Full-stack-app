@@ -51,6 +51,16 @@ const ParticipantSchema = new mongoose.Schema({
   security: {
     failedLoginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null }
+  },
+
+  // ── Forgot-PIN flow ──
+  // Only the SHA-256 hash of the emailed token is stored — never the raw
+  // token itself — so a database read alone can't be used to complete a
+  // reset (same rationale as bcrypt for accountPin, just a cheaper hash
+  // since this token is single-use and short-lived rather than a password).
+  passwordReset: {
+    tokenHash: { type: String, default: null },
+    expiresAt: { type: Date, default: null }
   }
 }, { timestamps: true });
 

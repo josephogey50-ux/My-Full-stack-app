@@ -29,10 +29,11 @@ src/
 
 - All registration form fields, validation, and the 3-step flow
   (Profile → Logistics → Checkout) matching `routes/register.js`.
-- Real bank transfer details, WhatsApp contact number, document types, and
-  the two real pricing plans (Full Payment ₦385,000 / Installment ₦100,000
-  deposit) — **not** the placeholder itinerary/pricing content from the
-  Figma mockup.
+- Real WhatsApp contact number, document types, and the two real pricing
+  plans (Full Payment ₦385,000 / Installment ₦100,000 deposit) — **not** the
+  placeholder itinerary/pricing content from the Figma mockup. Payment is via
+  Paystack or manual bank transfer (details shared over WhatsApp, not shown
+  on-site).
 - The rotating hero taglines from the current site.
 - Local draft autosave for in-progress registrations (so a refresh doesn't
   lose progress).

@@ -131,10 +131,10 @@ export default function Dashboard() {
     <div className="min-h-screen bg-cream">
       <nav className="bg-ink sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
-  <span className="flex items-center gap-2.5">
+  <button onClick={() => navigate('/')} className="flex items-center gap-2.5">
     <img src={logo} alt="AKWABA 001 logo" className="w-8 h-8 rounded-full object-cover" />
     <span className="font-display text-xl font-semibold text-cream">AKWABA 001</span>
-  </span>
+  </button>
           <button onClick={logout} className="text-cream-dark text-sm font-medium hover:text-cream transition">
             Log Out
           </button>

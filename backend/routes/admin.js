@@ -33,9 +33,10 @@ router.post('/login', adminLoginLimiter, (req, res) => {
     return res.status(401).json({ error: 'Invalid admin credentials.' });
   }
   const session = jwt.sign({ scope: 'admin' }, process.env.JWT_SECRET, { expiresIn: ADMIN_SESSION_EXPIRY });
+  const csrfToken = generateCsrfToken();
   res.cookie(ADMIN_COOKIE, session, authCookieOptions(ADMIN_SESSION_MS));
-  res.cookie(CSRF_COOKIE, generateCsrfToken(), csrfCookieOptions(ADMIN_SESSION_MS));
-  res.status(200).json({ success: true });
+  res.cookie(CSRF_COOKIE, csrfToken, csrfCookieOptions(ADMIN_SESSION_MS));
+  res.status(200).json({ success: true, csrfToken });
 });
 
 router.post('/logout', (req, res) => {
@@ -121,7 +122,10 @@ router.get('/stats', async (req, res) => {
       Participant.aggregate([{ $group: { _id: '$currentStep', count: { $sum: 1 } } }]),
       Participant.aggregate([{ $group: { _id: '$checkout.paymentStatus', count: { $sum: 1 } } }])
     ]);
-    res.status(200).json({ success: true, total, byStep, byStatus });
+    // Same cross-site rationale as participant/me: hand the CSRF cookie's
+    // value back in the body so the frontend can cache it, since it can't
+    // read the cookie itself off document.cookie on a different origin.
+    res.status(200).json({ success: true, total, byStep, byStatus, csrfToken: req.cookies[CSRF_COOKIE] });
   } catch (error) {
     res.status(500).json({ error: 'Could not load stats.' });
   }

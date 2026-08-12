@@ -30,7 +30,7 @@ function PaymentIcon() {
 const STEPS = [
   { icon: <ProfileIcon />, title: 'Create Your Profile', desc: 'Name, email, WhatsApp number and a 4-digit account PIN.' },
   { icon: <LogisticsIcon />, title: 'Travel Logistics', desc: 'Document type, room preference, and an emergency contact.' },
-  { icon: <PaymentIcon />, title: 'Checkout', desc: 'Choose a payment plan, pay by bank transfer, and upload your receipt.' },
+  { icon: <PaymentIcon />, title: 'Checkout', desc: 'Choose a payment plan and pay securely with Paystack.' },
 ]
 
 const DOC_TYPES = [
@@ -78,26 +78,10 @@ export default function TripInfo() {
           </div>
 
           <div className="bg-ink rounded-2xl p-8">
-            <div className="font-mono-custom text-xs text-gold uppercase tracking-widest mb-4">Bank Transfer Details</div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-cream-dark">
-                <span className="opacity-70">Bank</span>
-                <span className="text-cream font-semibold">MONIEPOINT</span>
-              </div>
-              <div className="flex justify-between text-cream-dark">
-                <span className="opacity-70">Account Number</span>
-                <span className="text-cream font-semibold">6166119553</span>
-              </div>
-              <div className="flex justify-between text-cream-dark">
-                <span className="opacity-70">Account Name</span>
-                <span className="text-cream font-semibold">TrootServices</span>
-              </div>
-            </div>
-            <p className="text-gold-light text-xs mt-4 leading-relaxed opacity-90">
-              ⚠️ After payment, send your receipt via WhatsApp to{' '}
-              <a href="https://wa.me/2348064749255" target="_blank" rel="noopener" className="underline">
-                +234 806 474 9255
-              </a>
+            <div className="font-mono-custom text-xs text-gold uppercase tracking-widest mb-4">Secure Payment</div>
+            <p className="text-cream-dark text-sm leading-relaxed opacity-90">
+              All payments are processed securely through Paystack — no manual bank transfers. Pay your deposit or
+              balance anytime from your dashboard using card, bank transfer via Paystack, or USSD.
             </p>
           </div>
         </div>

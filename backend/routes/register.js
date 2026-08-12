@@ -1,12 +1,14 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import Participant from '../model/Participant.js';
 import { requireParticipantAuth } from '../middleware/auth.js';
 import { generateCsrfToken } from '../middleware/csrf.js';
 import { TOKEN_COOKIE, CSRF_COOKIE, authCookieOptions, csrfCookieOptions, clearCookieOptions } from '../utils/cookies.js';
+import { sendResetPinEmail } from '../utils/mailer.js';
 import {
   ALLOWED_DOC_TYPES,
   ALLOWED_ROOM_PREFS,
@@ -56,9 +58,9 @@ function issueToken(email) {
   return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
 }
 
-function setAuthCookies(res, token) {
+function setAuthCookies(res, token, csrfToken) {
   res.cookie(TOKEN_COOKIE, token, authCookieOptions(JWT_EXPIRY_MS));
-  res.cookie(CSRF_COOKIE, generateCsrfToken(), csrfCookieOptions(JWT_EXPIRY_MS));
+  res.cookie(CSRF_COOKIE, csrfToken, csrfCookieOptions(JWT_EXPIRY_MS));
 }
 
 function publicParticipant(p) {
@@ -188,27 +190,18 @@ router.post('/register/step', handleUpload, async (req, res) => {
     }
 
     // ── STEP 3 — Checkout ──
+    // Payment itself happens later, through Paystack from the dashboard after
+    // login — this step just records the chosen plan. No manual bank
+    // transfer or receipt upload is collected here.
     else if (currentStepNum === 3) {
       const plan = incomingData.plan || 'Full Payment';
       if (!oneOf(plan, ALLOWED_PLANS)) {
         return res.status(400).json({ error: 'Invalid payment plan.' });
       }
-      if (!req.file) {
-        return res.status(400).json({ error: 'A payment receipt is required.' });
-      }
 
       updatePayload = {
         $set: {
           'checkout.plan': plan,
-          // Payment status/amount are organizer-confirmed only (see /api/admin routes) —
-          // never taken from the registrant's own request.
-          'checkout.receipt': {
-            data: req.file.buffer,
-            contentType: req.file.mimetype,
-            filename: req.file.originalname,
-            size: req.file.size,
-            uploadedAt: new Date()
-          },
           currentStep: 4
         }
       };
@@ -306,11 +299,13 @@ router.post('/login', loginLimiter, async (req, res) => {
     );
 
     const token = issueToken(participant.emailAddress);
-    setAuthCookies(res, token);
+    const csrfToken = generateCsrfToken();
+    setAuthCookies(res, token, csrfToken);
 
     res.status(200).json({
       message: 'Login successful!',
-      participant: publicParticipant(participant)
+      participant: publicParticipant(participant),
+      csrfToken
     });
 
   } catch (error) {
@@ -326,13 +321,129 @@ router.post('/logout', (req, res) => {
   res.status(200).json({ success: true });
 });
 
+// ─── Forgot / Reset PIN ───
+// Reuses the trusted frontend origin already required for CORS (the first
+// entry if several are configured) rather than introducing a second env var
+// that could drift from it.
+const FRONTEND_URL = (process.env.ALLOWED_ORIGINS || '').split(',')[0]?.trim();
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// Loose per-IP ceiling — mainly to stop this endpoint being used to spam an
+// arbitrary inbox with reset emails, not to defend the token itself (that's
+// a 32-byte random value; guessing it isn't feasible at any request rate).
+const forgotPinLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reset requests. Please try again later.' }
+});
+
+router.post('/forgot-pin', forgotPinLimiter, async (req, res) => {
+  const { emailAddress } = req.body;
+  if (!isValidEmail(emailAddress)) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+
+  // Always return the same generic response whether or not the email is on
+  // file — otherwise this endpoint becomes a way to check which emails are
+  // registered.
+  const genericResponse = { message: 'If that email is registered, a reset link has been sent.' };
+
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
+    // Single atomic write, same as the login-lockout counter above — no
+    // separate read-then-save() round trip for another request to race.
+    const participant = await Participant.findOneAndUpdate(
+      { emailAddress: emailAddress.toLowerCase().trim() },
+      {
+        $set: {
+          'passwordReset.tokenHash': hashResetToken(token),
+          'passwordReset.expiresAt': new Date(Date.now() + RESET_TOKEN_TTL_MS)
+        }
+      }
+    );
+    if (participant) {
+      const resetUrl = `${FRONTEND_URL}/reset-pin?token=${token}`;
+      try {
+        await sendResetPinEmail(participant.emailAddress, resetUrl);
+      } catch (mailError) {
+        // Don't let a mail-provider failure change the response shape (that
+        // would leak whether the email exists) — just log it so the
+        // organizer can see delivery is broken.
+        req.log.error({ err: mailError }, 'Failed to send reset-PIN email');
+      }
+    }
+    res.status(200).json(genericResponse);
+  } catch (error) {
+    req.log.error({ err: error }, 'forgot-pin failed');
+    res.status(200).json(genericResponse);
+  }
+});
+
+router.post('/reset-pin', async (req, res) => {
+  const { token, newPin } = req.body;
+  if (!isNonEmptyString(token)) {
+    return res.status(400).json({ error: 'Reset token is required.' });
+  }
+  if (!isValidPin(newPin)) {
+    return res.status(400).json({ error: 'A 4-digit PIN is required.' });
+  }
+
+  try {
+    const hashedPin = await bcrypt.hash(newPin.trim(), 12);
+
+    // Single atomic find-and-update: the token match is the filter itself,
+    // so a reused/already-consumed token (tokenHash just got nulled out by
+    // this same query) can't match twice — no separate check-then-clear
+    // race window.
+    const participant = await Participant.findOneAndUpdate(
+      {
+        'passwordReset.tokenHash': hashResetToken(token),
+        'passwordReset.expiresAt': { $gt: new Date() }
+      },
+      {
+        $set: {
+          accountPin: hashedPin,
+          'passwordReset.tokenHash': null,
+          'passwordReset.expiresAt': null,
+          // A forgotten PIN often follows a string of failed login attempts —
+          // clear the lockout too so the new PIN isn't immediately unusable.
+          'security.failedLoginAttempts': 0,
+          'security.lockUntil': null
+        }
+      }
+    );
+    if (!participant) {
+      return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+    }
+
+    res.status(200).json({ message: 'Your PIN has been reset. You can now log in.' });
+  } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });
+  }
+});
+
 // ─── 4. OWN PROFILE (auth required) ───
 router.get('/participant/me', requireParticipantAuth, async (req, res) => {
   try {
     const participant = await Participant.findOne({ emailAddress: req.participantEmail });
     if (!participant) return res.status(404).json({ error: 'Participant record not found.' });
 
-    res.status(200).json({ success: true, participant: publicParticipant(participant) });
+    // The CSRF cookie itself travels with this request automatically (it's
+    // just not httpOnly), but cross-site frontend JS can't read it off
+    // document.cookie — the cookie belongs to the backend's origin, not the
+    // page's. Handing it back here lets the client cache it in memory instead.
+    res.status(200).json({
+      success: true,
+      participant: publicParticipant(participant),
+      csrfToken: req.cookies[CSRF_COOKIE]
+    });
   } catch (error) {
     const isDev = process.env.NODE_ENV !== 'production';
     res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });

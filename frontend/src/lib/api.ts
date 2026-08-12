@@ -31,13 +31,17 @@ async function parseJson(response: Response) {
   return response.json().catch(() => ({ error: 'Invalid server response' }))
 }
 
-// Double-submit CSRF cookie set by the backend at login — readable by JS on
-// purpose, so it can be echoed back as a header. A cross-site page can
-// trigger a cookie-carrying request but can't read this value to forge the
-// matching header.
+// Double-submit CSRF token. The backend also sets this as a non-httpOnly
+// cookie, but frontend and backend are on different domains in production —
+// cookies belong to the domain that set them, so document.cookie on this
+// page can never see a cookie the backend issued. Instead, the backend hands
+// the value back in the JSON body wherever it's (re)issued (login, /me,
+// admin login, admin stats), and we cache it here in memory to echo back as
+// a header on mutating requests.
+let csrfToken: string | null = null
+
 function csrfHeaders(): Record<string, string> {
-  const match = document.cookie.match(/(?:^|;\s*)akwaba_csrf=([^;]*)/)
-  return match ? { 'x-csrf-token': decodeURIComponent(match[1]) } : {}
+  return csrfToken ? { 'x-csrf-token': csrfToken } : {}
 }
 
 // ── Registration (multi-step) ──────────────────────────────────────────
@@ -66,11 +70,36 @@ export async function login(loginPhone: string, loginPin: string) {
   })
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || result.message || `Error ${response.status}`, response.status)
+  csrfToken = result.csrfToken ?? csrfToken
   return result as { message: string; participant: ParticipantProfile }
 }
 
 export async function logout() {
   await fetch(`${API_BASE}/api/logout`, { method: 'POST', credentials: 'include', headers: csrfHeaders() })
+  csrfToken = null
+}
+
+// No credentials/CSRF here — the participant isn't logged in yet at this point.
+export async function forgotPin(emailAddress: string) {
+  const response = await fetch(`${API_BASE}/api/forgot-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emailAddress }),
+  })
+  const result = await parseJson(response)
+  if (!response.ok) throw new ApiError(result.error || `Error ${response.status}`, response.status)
+  return result as { message: string }
+}
+
+export async function resetPin(token: string, newPin: string) {
+  const response = await fetch(`${API_BASE}/api/reset-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPin }),
+  })
+  const result = await parseJson(response)
+  if (!response.ok) throw new ApiError(result.error || `Error ${response.status}`, response.status)
+  return result as { message: string }
 }
 
 export interface ParticipantProfile {
@@ -105,6 +134,7 @@ export async function getMyProfile() {
   const response = await fetch(`${API_BASE}/api/participant/me`, { credentials: 'include' })
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || 'Failed to load profile.', response.status)
+  csrfToken = result.csrfToken ?? csrfToken
   return result.participant as ParticipantProfile
 }
 
@@ -194,6 +224,7 @@ export async function adminStats() {
   const response = await fetch(`${API_BASE}/api/admin/stats`, { credentials: 'include' })
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || 'Could not load stats.', response.status)
+  csrfToken = result.csrfToken ?? csrfToken
   return result as {
     total: number
     byStep: { _id: number; count: number }[]
@@ -236,8 +267,10 @@ export async function adminLogin(adminKey: string) {
   })
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || 'Invalid admin key.', response.status)
+  csrfToken = result.csrfToken ?? csrfToken
 }
 
 export async function adminLogout() {
-  await fetch(`${API_BASE}/api/admin/logout`, { method: 'POST', credentials: 'include' })
+  await fetch(`${API_BASE}/api/admin/logout`, { method: 'POST', credentials: 'include', headers: csrfHeaders() })
+  csrfToken = null
 }

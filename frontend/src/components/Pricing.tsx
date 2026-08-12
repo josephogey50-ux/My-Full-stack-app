@@ -78,7 +78,7 @@ export default function Pricing() {
         </div>
 
         <p className="text-center text-ink-mid text-sm opacity-65 mt-10">
-          💳 Payment receipts are reviewed by the organizing team · Balance can be settled anytime from your dashboard
+          💳 All payments are processed securely via Paystack · Balance can be settled anytime from your dashboard
         </p>
       </div>
     </section>
