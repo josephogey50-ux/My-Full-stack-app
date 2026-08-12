@@ -59,6 +59,7 @@ export default function RegisterPanel() {
   const [accountPin, setAccountPin] = useState('')
   const [pinVisible, setPinVisible] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
   // ── Login state ──
@@ -97,6 +98,7 @@ export default function RegisterPanel() {
       return
     }
     setBusy(true)
+    setAlreadyRegistered(false)
     try {
       await submitRegistrationStep(1, {
         surname: draft.surname,
@@ -110,9 +112,17 @@ export default function RegisterPanel() {
       setStep(2)
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.', 'error')
+      if (err instanceof ApiError && err.status === 409) {
+        setAlreadyRegistered(true)
+      }
     } finally {
       setBusy(false)
     }
+  }
+
+  function goToLogin() {
+    setAlreadyRegistered(false)
+    setTab('login')
   }
 
   async function handleStep2(e: React.FormEvent) {
@@ -325,6 +335,21 @@ export default function RegisterPanel() {
                         Remember this PIN to log in to your dashboard.
                       </span>
                     </Field>
+                    {alreadyRegistered && (
+                      <div className="bg-gold/10 border border-gold/30 rounded-xl p-4 flex flex-col gap-2.5">
+                        <p className="text-cream-dark text-xs leading-relaxed">
+                          You already have an account with these details. Log in to reach your dashboard instead.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={goToLogin}
+                          className="bg-gold/90 hover:bg-gold text-ink py-2.5 rounded-full text-sm font-semibold transition"
+                        >
+                          Log In to Dashboard →
+                        </button>
+                      </div>
+                    )}
+
                     <button type="submit" disabled={busy} className={`${primaryBtnClass} w-full`}>
                       {busy ? 'Saving…' : 'Next: Travel Logistics →'}
                     </button>
