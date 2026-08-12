@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="AKWABA 001 — Nigerian Passport Travels registration portal." />
     <meta name="theme-color" content="#1A3A2E" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!--
+      Open Graph / Twitter Card: controls the preview card shown when a link
+      to this site is shared on WhatsApp, iMessage, Slack, Twitter/X, etc. —
+      WhatsApp is this app's primary distribution channel, so without these
+      tags a shared link renders as a bare URL with no image/title.
+      og:image and og:url must be absolute per spec (crawlers fetch them
+      independently, not relative to the page) — swap in the real production
+      frontend domain once it's known; localhost is a harmless placeholder
+      until then since crawlers only ever fetch the deployed URL.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AKWABA 001" />
+    <meta property="og:title" content="AKWABA 001 — Nigerian Passport Travels" />
+    <meta property="og:description" content="A road-trip convoy through Nigeria, Benin, Togo, and Ghana. Register your spot and pay securely with Paystack." />
+    <meta property="og:image" content="https://akwaba001.example.com/og-image.jpg" />
+    <meta property="og:url" content="https://akwaba001.example.com/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AKWABA 001 — Nigerian Passport Travels" />
+    <meta name="twitter:description" content="A road-trip convoy through Nigeria, Benin, Togo, and Ghana. Register your spot and pay securely with Paystack." />
+    <meta name="twitter:image" content="https://akwaba001.example.com/og-image.jpg" />
     <!--
       Content-Security-Policy: blunts XSS by restricting what the page can
       load/execute. connect-src is scoped to this app's own backend (the

@@ -54,13 +54,26 @@ export default function RegisterPanel() {
   const [tab, setTab] = useState<'register' | 'login'>('register')
 
   // ── Registration state ──
-  const [step, setStep] = useState(1)
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
+  // Lazy initializers (rather than useState + a mount effect) so the draft
+  // restored from localStorage is available on the very first render — no
+  // synchronous setState-in-effect, no flash of empty fields.
+  const [draft, setDraft] = useState<Draft>(loadDraft)
+  const [step, setStep] = useState(() => (draft.step > 1 ? draft.step : 1))
   const [accountPin, setAccountPin] = useState('')
   const [pinVisible, setPinVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [alreadyRegistered, setAlreadyRegistered] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
+
+  // ── Bot-protection fields for Step 1 (see backend routes/register.js) ──
+  // `honeypot` should stay empty — it's a text field hidden from real users
+  // but visible to naive scripted bots that fill in every input they find.
+  // `formMountedAt` timestamps when this component mounted, so we can send
+  // the server how long the user actually spent on the form. Set from an
+  // effect (not a useRef(Date.now()) initializer) — reading the clock is an
+  // impure operation and isn't safe to run directly during render.
+  const [honeypot, setHoneypot] = useState('')
+  const formMountedAt = useRef<number | null>(null)
 
   // ── Login state ──
   const [loginPhone, setLoginPhone] = useState('')
@@ -74,10 +87,8 @@ export default function RegisterPanel() {
   const [forgotBusy, setForgotBusy] = useState(false)
 
   useEffect(() => {
-    const restored = loadDraft()
-    setDraft(restored)
-    if (restored.step > 1) {
-      setStep(restored.step)
+    formMountedAt.current = Date.now()
+    if (draft.step > 1) {
       toast('Welcome back — your progress was restored.', 'info')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,6 +117,8 @@ export default function RegisterPanel() {
         emailAddress: draft.emailAddress,
         whatsAppNumber: draft.whatsAppNumber,
         accountPin,
+        company_website: honeypot,
+        elapsedMs: String(formMountedAt.current ? Date.now() - formMountedAt.current : Number.MAX_SAFE_INTEGER),
       })
       const next = { ...draft, step: 2 }
       persistDraft(next)
@@ -268,6 +281,20 @@ export default function RegisterPanel() {
 
                 {step === 1 && (
                   <form ref={formRef} onSubmit={handleStep1} className="flex flex-col gap-4">
+                    {/* Honeypot — invisible to real users, left for bots that
+                        auto-fill every field. See handleStep1 + backend
+                        routes/register.js (looksLikeBot). */}
+                    <input
+                      type="text"
+                      name="company_website"
+                      value={honeypot}
+                      onChange={(e) => setHoneypot(e.target.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                      aria-hidden="true"
+                      className="absolute w-px h-px opacity-0 overflow-hidden -z-10"
+                      style={{ left: '-9999px' }}
+                    />
                     <div className="grid grid-cols-2 gap-4">
                       <Field label="Surname">
                         <input

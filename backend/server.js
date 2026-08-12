@@ -124,9 +124,17 @@ app.use('/api/admin', adminRoute);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/public', publicRoutes);
 
-// Health check
+// ─── Health check ───
+// Reports the real dependency state, not just "the Node process is alive" —
+// mongoose.connection.readyState is 1 only while actively connected, so a
+// dropped/still-connecting DB now surfaces as a 503 instead of a false-green
+// 200, which is what an uptime monitor or load balancer actually needs to see.
 app.get('/', (req, res) => {
-  res.send('Akwaba 001 API is running ✅');
+  const dbConnected = mongoose.connection.readyState === 1;
+  res.status(dbConnected ? 200 : 503).json({
+    status: dbConnected ? 'ok' : 'degraded',
+    database: dbConnected ? 'connected' : 'disconnected'
+  });
 });
 
 // 404 for anything that didn't match a route above

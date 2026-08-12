@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
-import logo from '../assets/images/logo.png'
 import {
   ApiError,
+  adminAuditLog,
+  adminDownloadRegistrantsCsv,
   adminFetchReceiptBlobUrl,
   adminListRegistrants,
   adminLogin,
   adminLogout,
   adminStats,
   adminUpdatePayment,
+  type AuditLogEntry,
   type RegistrantSummary,
 } from '../lib/api'
 import { useToast } from '../components/Toast'
@@ -43,16 +45,17 @@ export default function Admin() {
 function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const toast = useToast()
   const [key, setKey] = useState('')
+  const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setBusy(true)
     try {
-      await adminLogin(key.trim())
+      await adminLogin(key.trim(), name.trim())
       onSuccess()
-    } catch {
-      toast('Invalid admin key.', 'error')
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Invalid admin key.', 'error')
     } finally {
       setBusy(false)
     }
@@ -62,11 +65,22 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
     <div className="min-h-screen bg-ink flex items-center justify-center px-6">
       <form onSubmit={submit} className="bg-forest-mid rounded-2xl p-10 w-full max-w-sm border border-white/5">
         <h1 className="font-display text-2xl font-bold text-cream mb-2">Organizer Access</h1>
-        <p className="text-cream-dark text-sm opacity-70 mb-6">Enter the admin key to view registrant data.</p>
+        <p className="text-cream-dark text-sm opacity-70 mb-6">
+          Enter your name and the admin key. Your name is recorded against any changes you make, so we know who did
+          what.
+        </p>
+        <input
+          type="text"
+          required
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Your name"
+          className="w-full bg-white/5 border border-white/15 focus:border-gold rounded-lg px-4 py-3 text-cream text-sm mb-3"
+        />
         <input
           type="password"
           required
-          autoFocus
           value={key}
           onChange={(e) => setKey(e.target.value)}
           placeholder="Admin key"
@@ -86,6 +100,7 @@ function AdminLogin({ onSuccess }: { onSuccess: () => void }) {
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const toast = useToast()
+  const [tab, setTab] = useState<'registrants' | 'activity'>('registrants')
   const [stats, setStats] = useState<Awaited<ReturnType<typeof adminStats>> | null>(null)
   const [registrants, setRegistrants] = useState<RegistrantSummary[]>([])
   const [total, setTotal] = useState(0)
@@ -95,6 +110,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<RegistrantSummary | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     void loadStats()
@@ -141,6 +157,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     void loadRegistrants()
   }
 
+  async function exportCsv() {
+    setExporting(true)
+    try {
+      await adminDownloadRegistrantsCsv({ q: q || undefined, status: status || undefined })
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not export registrants.', 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-cream">
       <nav className="bg-ink sticky top-0 z-10">
@@ -170,6 +197,29 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
 
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setTab('registrants')}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+              tab === 'registrants' ? 'bg-forest text-cream' : 'bg-white border border-ink/15 text-ink-mid'
+            }`}
+          >
+            Registrants
+          </button>
+          <button
+            onClick={() => setTab('activity')}
+            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${
+              tab === 'activity' ? 'bg-forest text-cream' : 'bg-white border border-ink/15 text-ink-mid'
+            }`}
+          >
+            Activity Log
+          </button>
+        </div>
+
+        {tab === 'activity' ? (
+          <ActivityLog />
+        ) : (
+        <>
         <form onSubmit={search} className="flex flex-wrap gap-3 mb-6">
           <input
             value={q}
@@ -194,6 +244,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </select>
           <button type="submit" className="bg-forest text-cream px-5 py-2.5 rounded-lg text-sm font-semibold">
             Search
+          </button>
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={exporting}
+            className="bg-white border border-ink/15 text-ink disabled:opacity-60 px-5 py-2.5 rounded-lg text-sm font-semibold"
+          >
+            {exporting ? 'Exporting…' : '⬇ Export CSV'}
           </button>
         </form>
 
@@ -272,6 +330,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </button>
           </div>
         </div>
+        </>
+        )}
       </main>
 
       {selected && (
@@ -293,6 +353,111 @@ function StatCard({ label, value }: { label: string; value: number }) {
     <div className="bg-white rounded-xl border border-ink/10 p-5">
       <div className="text-ink-mid text-xs opacity-60 mb-1">{label}</div>
       <div className="font-display text-3xl font-bold text-ink">{value}</div>
+    </div>
+  )
+}
+
+function ActivityLog() {
+  const toast = useToast()
+  const [entries, setEntries] = useState<AuditLogEntry[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [pages, setPages] = useState(1)
+  const [loading, setLoading] = useState(true)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const result = await adminAuditLog({ page, limit: 25 })
+      setEntries(result.entries)
+      setTotal(result.total)
+      setPages(result.pages)
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not load the activity log.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // load()'s setState calls only run after the awaited request resolves,
+    // not synchronously in this effect body — standard fetch-on-page-change.
+    void load() // eslint-disable-line react-hooks/set-state-in-effect
+  }, [page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function describe(entry: AuditLogEntry) {
+    if (entry.action === 'update_payment') {
+      const before = entry.before as { paymentStatus?: string; amountPaid?: number }
+      const after = entry.after as { paymentStatus?: string; amountPaid?: number }
+      return `Payment ${before.paymentStatus ?? '—'} (₦${Number(before.amountPaid || 0).toLocaleString()}) → ${
+        after.paymentStatus ?? '—'
+      } (₦${Number(after.amountPaid || 0).toLocaleString()})`
+    }
+    return entry.action
+  }
+
+  return (
+    <div>
+      <div className="bg-white rounded-xl border border-ink/10 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-cream-dark text-ink-mid text-left">
+            <tr>
+              <th className="px-4 py-3 font-semibold">When</th>
+              <th className="px-4 py-3 font-semibold">Admin</th>
+              <th className="px-4 py-3 font-semibold">Registrant</th>
+              <th className="px-4 py-3 font-semibold">Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-8 text-center text-ink-mid">
+                  Loading…
+                </td>
+              </tr>
+            ) : entries.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-8 text-center text-ink-mid">
+                  No activity recorded yet.
+                </td>
+              </tr>
+            ) : (
+              entries.map((entry) => (
+                <tr key={entry._id} className="border-t border-ink/5">
+                  <td className="px-4 py-3 text-ink-mid whitespace-nowrap">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-ink font-medium">{entry.adminName}</td>
+                  <td className="px-4 py-3 text-ink-mid">{entry.targetEmail}</td>
+                  <td className="px-4 py-3 text-ink-mid">{describe(entry)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between mt-4 text-sm text-ink-mid">
+        <span>
+          {total} entr{total === 1 ? 'y' : 'ies'} · page {page} of {Math.max(1, pages)}
+        </span>
+        <div className="flex gap-2">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+            className="px-3 py-1.5 rounded-lg border border-ink/15 disabled:opacity-40"
+          >
+            ← Prev
+          </button>
+          <button
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+            className="px-3 py-1.5 rounded-lg border border-ink/15 disabled:opacity-40"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

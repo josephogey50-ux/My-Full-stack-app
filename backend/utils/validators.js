@@ -6,8 +6,6 @@
 export const ALLOWED_DOC_TYPES = ['International Passport', 'ECOWAS Passport', 'NIN'];
 export const ALLOWED_ROOM_PREFS = ['match', 'paired'];
 export const ALLOWED_PLANS = ['Full Payment', 'Installment Plan'];
-export const ALLOWED_RECEIPT_MIME_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
-export const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5MB — matches frontend copy/validation
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Accepts +234..., 0..., or plain digit strings of reasonable length.

@@ -40,6 +40,11 @@ export function requireAdmin(req, res, next) {
     if (decoded.scope !== 'admin') {
       return res.status(401).json({ error: 'Invalid admin session.' });
     }
+    // Every admin currently shares one secret (see verifyAdminSecret below),
+    // so this name — collected at login and carried in the session JWT — is
+    // the only per-admin identity available for the audit trail on
+    // money-affecting actions (routes/admin.js).
+    req.adminName = decoded.name || 'Unknown';
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Your admin session has expired. Please log in again.' });

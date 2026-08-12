@@ -2,19 +2,16 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import Participant from '../model/Participant.js';
 import { requireParticipantAuth } from '../middleware/auth.js';
-import { generateCsrfToken } from '../middleware/csrf.js';
+import { generateCsrfToken, requireCsrf } from '../middleware/csrf.js';
 import { TOKEN_COOKIE, CSRF_COOKIE, authCookieOptions, csrfCookieOptions, clearCookieOptions } from '../utils/cookies.js';
 import { sendResetPinEmail } from '../utils/mailer.js';
 import {
   ALLOWED_DOC_TYPES,
   ALLOWED_ROOM_PREFS,
   ALLOWED_PLANS,
-  ALLOWED_RECEIPT_MIME_TYPES,
-  MAX_RECEIPT_BYTES,
   isValidEmail,
   isValidPhone,
   isValidPin,
@@ -26,28 +23,6 @@ import {
 import { TRIP_TOTAL_NAIRA, MIN_INITIAL_DEPOSIT_NGN } from '../utils/utils_payments.js';
 
 const router = express.Router();
-
-// ─── Multer: buffer in memory, never written to local disk ───
-// Render's filesystem is ephemeral — anything written to disk is lost on
-// every redeploy/restart. Receipts are embedded in the participant's
-// MongoDB document instead, so they persist with everything else.
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_RECEIPT_BYTES },
-  fileFilter: (req, file, cb) => {
-    if (!ALLOWED_RECEIPT_MIME_TYPES.includes(file.mimetype)) {
-      return cb(new Error('Invalid file type. Upload JPG, PNG, or PDF only.'));
-    }
-    cb(null, true);
-  }
-});
-
-function handleUpload(req, res, next) {
-  upload.single('receipt')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message || 'File upload failed.' });
-    next();
-  });
-}
 
 const JWT_EXPIRY = '12h';
 const JWT_EXPIRY_MS = 12 * 60 * 60 * 1000;
@@ -97,8 +72,41 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts from this network. Please try again shortly.' }
 });
 
+// ─── Bot protection for account creation (step 1 only) ───
+// Two lightweight, no-external-service heuristics layered on top of the rate
+// limiter below. Neither is a hard security boundary on its own — a
+// determined attacker can fake both — but together they price out the
+// unsophisticated scripted-signup bots that are the realistic threat here.
+//
+// 1. Honeypot: `company_website` is a text input the frontend positions
+//    off-screen and marks aria-hidden/tabIndex=-1. Real users never see or
+//    fill it; simple bots that blindly fill every field in a scraped form do.
+// 2. Timing: `elapsedMs` is computed entirely client-side (Date.now() at
+//    submit minus Date.now() at form mount) so there's no client/server
+//    clock-skew concern — a submission claiming a human filled out four
+//    fields and a PIN in under a second is almost certainly scripted.
+const MIN_FORM_FILL_MS = 2000;
+
+function looksLikeBot(incomingData) {
+  if (isNonEmptyString(incomingData.company_website)) return true;
+  const elapsed = Number(incomingData.elapsedMs);
+  if (Number.isFinite(elapsed) && elapsed < MIN_FORM_FILL_MS) return true;
+  return false;
+}
+
+// Tighter than the global /api ceiling (300/15min) — account creation
+// specifically is the expensive-to-clean-up action, so it gets its own
+// stricter per-IP limit on top.
+const registerStepLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many registration attempts from this network. Please try again later.' }
+});
+
 // ─── 1. REGISTRATION STEP ROUTE ───
-router.post('/register/step', handleUpload, async (req, res) => {
+router.post('/register/step', registerStepLimiter, async (req, res) => {
   const { step, emailAddress, ...incomingData } = req.body;
 
   const currentStepNum = parseInt(step, 10);
@@ -114,6 +122,11 @@ router.post('/register/step', handleUpload, async (req, res) => {
   try {
     // ── STEP 1 — Profile Creation ──
     if (currentStepNum === 1) {
+      if (looksLikeBot(incomingData)) {
+        // Generic validation-shaped error — doesn't tip off a bot that it
+        // was specifically caught by the honeypot/timing check.
+        return res.status(400).json({ error: 'Could not process this submission. Please try again.' });
+      }
       if (!isNonEmptyString(incomingData.surname) || !isNonEmptyString(incomingData.firstName)) {
         return res.status(400).json({ error: 'Surname and first name are required.' });
       }
@@ -462,6 +475,85 @@ router.get('/participant/me/receipt', requireParticipantAuth, async (req, res) =
     res.send(receipt.data);
   } catch (error) {
     res.status(500).json({ error: 'Could not retrieve receipt.' });
+  }
+});
+
+// ─── 6. CHANGE OWN PIN (auth required) ───
+// Separate from /forgot-pin: this is for a participant who's currently
+// logged in and simply wants to set a new PIN, without going through email.
+const changePinLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many PIN change attempts. Please try again later.' }
+});
+
+router.post('/participant/me/change-pin', requireParticipantAuth, requireCsrf, changePinLimiter, async (req, res) => {
+  const { currentPin, newPin } = req.body;
+  if (!isValidPin(currentPin) || !isValidPin(newPin)) {
+    return res.status(400).json({ error: 'Both your current PIN and a new 4-digit PIN are required.' });
+  }
+
+  try {
+    const participant = await Participant.findOne({ emailAddress: req.participantEmail });
+    if (!participant) return res.status(404).json({ error: 'Participant record not found.' });
+
+    const isMatch = await bcrypt.compare(currentPin.trim(), participant.accountPin);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Current PIN is incorrect.' });
+    }
+
+    participant.accountPin = await bcrypt.hash(newPin.trim(), 12);
+    await participant.save();
+
+    res.status(200).json({ message: 'Your PIN has been updated.' });
+  } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });
+  }
+});
+
+// ─── 7. EDIT OWN LOGISTICS (auth required) ───
+// Lets a registered participant self-service-correct their travel logistics
+// (document type, room preference/roommate, emergency contact) after
+// completing Step 2, instead of needing the organizer to edit it for them.
+// Identity fields (name/email/WhatsApp) are intentionally not editable here.
+router.patch('/participant/me/logistics', requireParticipantAuth, requireCsrf, async (req, res) => {
+  const { docType, roomPreference, roommateName, emergencyContact } = req.body;
+
+  if (!oneOf(docType, ALLOWED_DOC_TYPES)) {
+    return res.status(400).json({ error: 'Invalid travel document type.' });
+  }
+  if (!oneOf(roomPreference, ALLOWED_ROOM_PREFS)) {
+    return res.status(400).json({ error: 'Invalid room preference.' });
+  }
+  if (roomPreference === 'paired' && !isNonEmptyString(roommateName)) {
+    return res.status(400).json({ error: "Roommate's full name is required for paired rooming." });
+  }
+  if (!isNonEmptyString(emergencyContact)) {
+    return res.status(400).json({ error: 'An emergency contact is required.' });
+  }
+
+  try {
+    const participant = await Participant.findOneAndUpdate(
+      { emailAddress: req.participantEmail },
+      {
+        $set: {
+          'logistics.docType': docType,
+          'logistics.roomPreference': roomPreference,
+          'logistics.roommateName': roomPreference === 'paired' ? roommateName.trim() : '',
+          'logistics.emergencyContact': emergencyContact.trim()
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    if (!participant) return res.status(404).json({ error: 'Participant record not found.' });
+
+    res.status(200).json({ message: 'Your details have been updated.', participant: publicParticipant(participant) });
+  } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({ error: 'Internal Server Error', ...(isDev && { details: error.message }) });
   }
 });
 

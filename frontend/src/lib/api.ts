@@ -47,14 +47,13 @@ function csrfHeaders(): Record<string, string> {
 // ── Registration (multi-step) ──────────────────────────────────────────
 // step 1: surname, firstName, emailAddress, whatsAppNumber, accountPin
 // step 2: emailAddress, docType, roomPreference, roommateName?, emergencyContact
-// step 3: emailAddress, plan, receipt (File)
-export async function submitRegistrationStep(step: 1 | 2 | 3, fields: Record<string, string>, receipt?: File) {
-  const payload = new FormData()
-  payload.append('step', String(step))
-  Object.entries(fields).forEach(([key, value]) => payload.append(key, value))
-  if (receipt) payload.append('receipt', receipt)
-
-  const response = await fetch(`${API_BASE}/api/register/step`, { method: 'POST', body: payload })
+// step 3: emailAddress, plan
+export async function submitRegistrationStep(step: 1 | 2 | 3, fields: Record<string, string>) {
+  const response = await fetch(`${API_BASE}/api/register/step`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ step, ...fields }),
+  })
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || result.message || `Error ${response.status}`, response.status)
   return result as { message: string; nextStep: number }
@@ -135,6 +134,35 @@ export async function getMyProfile() {
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || 'Failed to load profile.', response.status)
   csrfToken = result.csrfToken ?? csrfToken
+  return result.participant as ParticipantProfile
+}
+
+export async function changeMyPin(currentPin: string, newPin: string) {
+  const response = await fetch(`${API_BASE}/api/participant/me/change-pin`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+    body: JSON.stringify({ currentPin, newPin }),
+  })
+  const result = await parseJson(response)
+  if (!response.ok) throw new ApiError(result.error || `Error ${response.status}`, response.status)
+  return result as { message: string }
+}
+
+export async function updateMyLogistics(fields: {
+  docType: string
+  roomPreference: string
+  roommateName: string
+  emergencyContact: string
+}) {
+  const response = await fetch(`${API_BASE}/api/participant/me/logistics`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+    body: JSON.stringify(fields),
+  })
+  const result = await parseJson(response)
+  if (!response.ok) throw new ApiError(result.error || `Error ${response.status}`, response.status)
   return result.participant as ParticipantProfile
 }
 
@@ -258,19 +286,70 @@ export async function adminFetchReceiptBlobUrl(email: string) {
 
 // Exchanges the admin key for an httpOnly session cookie. The key itself is
 // never stored client-side afterward — only this one request ever sends it.
-export async function adminLogin(adminKey: string) {
+// adminName rides along in the session JWT and is attached server-side to
+// every audit-log entry, since every admin still shares the one key.
+export async function adminLogin(adminKey: string, adminName: string) {
   const response = await fetch(`${API_BASE}/api/admin/login`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ adminKey }),
+    body: JSON.stringify({ adminKey, adminName }),
   })
   const result = await parseJson(response)
   if (!response.ok) throw new ApiError(result.error || 'Invalid admin key.', response.status)
   csrfToken = result.csrfToken ?? csrfToken
+  return result as { success: true; adminName: string }
 }
 
 export async function adminLogout() {
   await fetch(`${API_BASE}/api/admin/logout`, { method: 'POST', credentials: 'include', headers: csrfHeaders() })
   csrfToken = null
+}
+
+// ── Admin: audit log ──
+export interface AuditLogEntry {
+  _id: string
+  adminName: string
+  action: string
+  targetEmail: string
+  before: Record<string, unknown>
+  after: Record<string, unknown>
+  createdAt: string
+}
+
+export async function adminAuditLog(params: { page?: number; limit?: number }) {
+  const search = new URLSearchParams()
+  search.set('page', String(params.page ?? 1))
+  search.set('limit', String(params.limit ?? 25))
+
+  const response = await fetch(`${API_BASE}/api/admin/audit-log?${search.toString()}`, {
+    credentials: 'include',
+  })
+  const result = await parseJson(response)
+  if (!response.ok) throw new ApiError(result.error || 'Could not load the audit log.', response.status)
+  return result as { total: number; page: number; pages: number; entries: AuditLogEntry[] }
+}
+
+// ── Admin: CSV export ──
+// Fetched as a blob (not a plain <a href>) so the admin session cookie is
+// attached the same way every other admin request attaches it.
+export async function adminDownloadRegistrantsCsv(params: { q?: string; status?: string; step?: string }) {
+  const search = new URLSearchParams()
+  if (params.q) search.set('q', params.q)
+  if (params.status) search.set('status', params.status)
+  if (params.step) search.set('step', params.step)
+
+  const response = await fetch(`${API_BASE}/api/admin/registrants/export?${search.toString()}`, {
+    credentials: 'include',
+  })
+  if (!response.ok) throw new ApiError('Could not export registrants.', response.status)
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `akwaba-registrants-${Date.now()}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }

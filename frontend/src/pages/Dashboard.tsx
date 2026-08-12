@@ -3,15 +3,19 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import logo from '../assets/images/logo.png'
 import {
   ApiError,
+  changeMyPin,
   fetchMyReceiptBlobUrl,
   getMyProfile,
   initiatePayment,
   logout as apiLogout,
+  updateMyLogistics,
   verifyPayment,
   type ParticipantProfile,
 } from '../lib/api'
 import { useToast } from '../components/Toast'
 import PaymentProgress from '../components/PaymentProgress'
+
+const DOC_TYPES = ['International Passport', 'ECOWAS Passport', 'NIN']
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -21,23 +25,36 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [payAmount, setPayAmount] = useState('')
   const [payBusy, setPayBusy] = useState(false)
-  const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [receiptLoading, setReceiptLoading] = useState(false)
 
-  useEffect(() => {
-    void load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Self-service logistics editing ──
+  const [editingLogistics, setEditingLogistics] = useState(false)
+  const [logisticsForm, setLogisticsForm] = useState({
+    docType: 'International Passport',
+    roomPreference: 'match',
+    roommateName: '',
+    emergencyContact: '',
+  })
+  const [savingLogistics, setSavingLogistics] = useState(false)
 
-  async function load() {
-    await handlePaymentRedirect()
-    await refreshProfile()
-  }
+  // ── Self-service PIN change ──
+  const [showPinForm, setShowPinForm] = useState(false)
+  const [currentPin, setCurrentPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmNewPin, setConfirmNewPin] = useState('')
+  const [changingPin, setChangingPin] = useState(false)
 
   async function refreshProfile() {
     setLoading(true)
     try {
       const p = await getMyProfile()
       setProfile(p)
+      setLogisticsForm({
+        docType: p.logistics?.docType || 'International Passport',
+        roomPreference: p.logistics?.roomPreference || 'match',
+        roommateName: p.logistics?.roommateName || '',
+        emergencyContact: p.logistics?.emergencyContact || '',
+      })
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         toast('Please log in to view your dashboard.', 'error')
@@ -70,6 +87,17 @@ export default function Dashboard() {
     }
   }
 
+  async function load() {
+    await handlePaymentRedirect()
+    await refreshProfile()
+  }
+
+  useEffect(() => {
+    // load()'s setState calls only run after the awaited requests resolve,
+    // not synchronously in this effect body — standard fetch-on-mount.
+    void load() // eslint-disable-line react-hooks/set-state-in-effect
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handlePay() {
     if (!profile) return
     const amount = Number(payAmount)
@@ -99,12 +127,51 @@ export default function Dashboard() {
     setReceiptLoading(true)
     try {
       const url = await fetchMyReceiptBlobUrl()
-      setReceiptUrl(url)
       window.open(url, '_blank', 'noopener')
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not load your receipt.', 'error')
     } finally {
       setReceiptLoading(false)
+    }
+  }
+
+  async function saveLogistics(e: React.FormEvent) {
+    e.preventDefault()
+    if (logisticsForm.roomPreference === 'paired' && !logisticsForm.roommateName.trim()) {
+      toast("Roommate's full name is required for paired rooming.", 'error')
+      return
+    }
+    setSavingLogistics(true)
+    try {
+      const updated = await updateMyLogistics(logisticsForm)
+      setProfile(updated)
+      toast('Your details have been updated.', 'success')
+      setEditingLogistics(false)
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not save your changes.', 'error')
+    } finally {
+      setSavingLogistics(false)
+    }
+  }
+
+  async function handleChangePin(e: React.FormEvent) {
+    e.preventDefault()
+    if (newPin !== confirmNewPin) {
+      toast('New PINs do not match.', 'error')
+      return
+    }
+    setChangingPin(true)
+    try {
+      await changeMyPin(currentPin, newPin)
+      toast('Your PIN has been updated.', 'success')
+      setShowPinForm(false)
+      setCurrentPin('')
+      setNewPin('')
+      setConfirmNewPin('')
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not change your PIN.', 'error')
+    } finally {
+      setChangingPin(false)
     }
   }
 
@@ -154,13 +221,105 @@ export default function Dashboard() {
             </span>
           </div>
 
-          <Section title="Your Profile">
-            <Item label="Email" value={profile.emailAddress} />
-            <Item label="WhatsApp Number" value={profile.whatsAppNumber} />
-            <Item label="Travel Document" value={profile.logistics?.docType || '—'} />
-            <Item label="Room Preference" value={profile.logistics?.roomPreference === 'paired' ? 'Paired' : 'Solo (matched)'} />
-            <Item label="Emergency Contact" value={profile.logistics?.emergencyContact || '—'} />
-          </Section>
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-lg font-semibold text-ink">Your Profile</h2>
+              {!editingLogistics && (
+                <button
+                  onClick={() => setEditingLogistics(true)}
+                  className="text-rust text-xs font-semibold hover:underline"
+                >
+                  Edit Logistics
+                </button>
+              )}
+            </div>
+
+            {!editingLogistics ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Item label="Email" value={profile.emailAddress} />
+                <Item label="WhatsApp Number" value={profile.whatsAppNumber} />
+                <Item label="Travel Document" value={profile.logistics?.docType || '—'} />
+                <Item label="Room Preference" value={profile.logistics?.roomPreference === 'paired' ? 'Paired' : 'Solo (matched)'} />
+                <Item label="Emergency Contact" value={profile.logistics?.emergencyContact || '—'} />
+              </div>
+            ) : (
+              <form onSubmit={saveLogistics} className="bg-cream-dark rounded-xl p-6 flex flex-col gap-4">
+                <p className="text-ink-mid text-xs opacity-70">
+                  Your name, email, and WhatsApp number can't be changed here — contact us on WhatsApp if those need
+                  to be corrected.
+                </p>
+                <label className="block">
+                  <span className="block text-ink-mid text-xs font-semibold mb-1.5">Travel Document</span>
+                  <select
+                    value={logisticsForm.docType}
+                    onChange={(e) => setLogisticsForm({ ...logisticsForm, docType: e.target.value })}
+                    className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                  >
+                    {DOC_TYPES.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="block text-ink-mid text-xs font-semibold mb-1.5">Room Preference</span>
+                  <select
+                    value={logisticsForm.roomPreference}
+                    onChange={(e) => setLogisticsForm({ ...logisticsForm, roomPreference: e.target.value })}
+                    className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                  >
+                    <option value="match">Solo (Match me with a same-sex roommate)</option>
+                    <option value="paired">Paired (Traveling with a designated partner)</option>
+                  </select>
+                </label>
+                {logisticsForm.roomPreference === 'paired' && (
+                  <label className="block">
+                    <span className="block text-ink-mid text-xs font-semibold mb-1.5">Roommate's Full Name</span>
+                    <input
+                      required
+                      value={logisticsForm.roommateName}
+                      onChange={(e) => setLogisticsForm({ ...logisticsForm, roommateName: e.target.value })}
+                      className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                    />
+                  </label>
+                )}
+                <label className="block">
+                  <span className="block text-ink-mid text-xs font-semibold mb-1.5">Emergency Contact (Next of Kin)</span>
+                  <input
+                    required
+                    value={logisticsForm.emergencyContact}
+                    onChange={(e) => setLogisticsForm({ ...logisticsForm, emergencyContact: e.target.value })}
+                    className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                  />
+                </label>
+                <div className="flex gap-3 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingLogistics(false)
+                      setLogisticsForm({
+                        docType: profile.logistics?.docType || 'International Passport',
+                        roomPreference: profile.logistics?.roomPreference || 'match',
+                        roommateName: profile.logistics?.roommateName || '',
+                        emergencyContact: profile.logistics?.emergencyContact || '',
+                      })
+                    }}
+                    className="flex-1 bg-white border border-ink/15 text-ink-mid py-2.5 rounded-lg text-sm font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingLogistics}
+                    className="flex-1 bg-forest hover:bg-forest-mid disabled:opacity-60 text-cream py-2.5 rounded-lg text-sm font-semibold transition"
+                  >
+                    {savingLogistics ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
 
           <Section title="💳 Payment">
             <Item label="Plan" value={profile.checkout?.plan || '—'} />
@@ -217,6 +376,85 @@ export default function Dashboard() {
               {receiptLoading ? 'Loading…' : 'View My Receipt'}
             </button>
           )}
+
+          <div className="mt-10 pt-8 border-t border-ink/10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-lg font-semibold text-ink">🔒 Account Security</h2>
+              {!showPinForm && (
+                <button
+                  onClick={() => setShowPinForm(true)}
+                  className="text-rust text-xs font-semibold hover:underline"
+                >
+                  Change PIN
+                </button>
+              )}
+            </div>
+
+            {showPinForm && (
+              <form onSubmit={handleChangePin} className="bg-cream-dark rounded-xl p-6 flex flex-col gap-4 max-w-sm">
+                <label className="block">
+                  <span className="block text-ink-mid text-xs font-semibold mb-1.5">Current PIN</span>
+                  <input
+                    required
+                    type="password"
+                    pattern="[0-9]{4}"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={currentPin}
+                    onChange={(e) => setCurrentPin(e.target.value)}
+                    className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-ink-mid text-xs font-semibold mb-1.5">New 4-Digit PIN</span>
+                  <input
+                    required
+                    type="password"
+                    pattern="[0-9]{4}"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value)}
+                    className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-ink-mid text-xs font-semibold mb-1.5">Confirm New PIN</span>
+                  <input
+                    required
+                    type="password"
+                    pattern="[0-9]{4}"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={confirmNewPin}
+                    onChange={(e) => setConfirmNewPin(e.target.value)}
+                    className="w-full bg-white border border-ink/15 rounded-lg px-3 py-2.5 text-sm text-ink"
+                  />
+                </label>
+                <div className="flex gap-3 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPinForm(false)
+                      setCurrentPin('')
+                      setNewPin('')
+                      setConfirmNewPin('')
+                    }}
+                    className="flex-1 bg-white border border-ink/15 text-ink-mid py-2.5 rounded-lg text-sm font-semibold transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={changingPin}
+                    className="flex-1 bg-forest hover:bg-forest-mid disabled:opacity-60 text-cream py-2.5 rounded-lg text-sm font-semibold transition"
+                  >
+                    {changingPin ? 'Saving…' : 'Update PIN'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       </main>
     </div>

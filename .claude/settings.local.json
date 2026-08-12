@@ -60,7 +60,20 @@
       "Bash(node cleanup_test.mjs)",
       "Bash(curl -s -X POST http://localhost:5000/api/forgot-pin -H \"Content-Type: application/json\" -d '{\"emailAddress\":\"jsphogey@gmail.com\"}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
       "Bash(curl -s -X POST http://localhost:5000/api/register/step -F step=1 -F surname=DeliveryTest -F firstName=Reset -F emailAddress=jsphogey@gmail.com -F whatsAppNumber=08033322211 -F accountPin=1234)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5000/api/public/convoy --max-time 3)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5000/api/public/convoy --max-time 3)",
+      "Bash(render whoami *)",
+      "PowerShell(Get-Command render -ErrorAction SilentlyContinue)",
+      "PowerShell(render --version 2>&1)",
+      "Bash(grep -i \"\\\\.env$\")",
+      "Bash(python3 -c \"import PIL; print\\('PIL ok'\\)\")",
+      "Bash(python -c \"import PIL; print\\('PIL ok'\\)\")",
+      "Bash(convert -version)",
+      "Bash(npm uninstall *)",
+      "Bash(npm --version)",
+      "Bash(npm test *)",
+      "Bash(node -e \"require.resolve\\('@eslint/js'\\)\")",
+      "Bash(node -e \"const rh = require\\('eslint-plugin-react-hooks'\\); console.log\\(Object.keys\\(rh.configs\\)\\); console.log\\(Object.keys\\(rh.configs.recommended\\)\\)\")",
+      "Read(//tmp/**)"
     ]
   }
 }
