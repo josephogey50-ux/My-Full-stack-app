@@ -65,7 +65,7 @@ npm run dev
 ```
 
 The app talks to `http://localhost:5000` when run from `localhost`, and to
-`https://akwaba-back-end.onrender.com` otherwise — same logic the old
+`https://my-full-stack-app-cx43.onrender.com` otherwise — same logic the old
 `app.js` used. Change `API_BASE` in `src/lib/api.ts` if either URL changes.
 
 ## Building for production

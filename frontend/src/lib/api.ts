@@ -17,7 +17,7 @@ export const API_BASE =
   import.meta.env.VITE_API_BASE ||
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:5000'
-    : 'https://akwaba-back-end.onrender.com')
+    : 'https://my-full-stack-app-cx43.onrender.com')
 
 export class ApiError extends Error {
   status: number
