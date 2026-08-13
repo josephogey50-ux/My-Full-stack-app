@@ -16,7 +16,7 @@ const PLANS = [
   },
   {
     name: 'Installment Plan',
-    price: '₦100,000',
+    price: '₦50,000',
     suffix: 'min. deposit',
     desc: 'Secure your spot with a deposit, then clear the balance from your dashboard before departure.',
     featured: false,

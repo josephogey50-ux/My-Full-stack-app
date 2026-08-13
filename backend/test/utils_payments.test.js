@@ -47,10 +47,10 @@ describe('initPaymentConfig / MIN_INITIAL_DEPOSIT_NGN', () => {
   it('caps MIN_INITIAL_DEPOSIT_NGN at the trip total for a cheaper trip', () => {
     // Guards against a real footgun: an organizer setting a trip total below
     // the 100k default deposit would otherwise make the minimum unpayable.
-    process.env.TRIP_TOTAL_AMOUNT_NGN = '50000';
+    process.env.TRIP_TOTAL_AMOUNT_NGN = '385000';
     delete process.env.MIN_INITIAL_DEPOSIT_NGN;
     initPaymentConfig();
-    expect(payments.MIN_INITIAL_DEPOSIT_NGN).toBe(50000);
+    expect(payments.MIN_INITIAL_DEPOSIT_NGN).toBe(100000);
     restoreEnv();
   });
 });

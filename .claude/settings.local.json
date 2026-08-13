@@ -73,7 +73,24 @@
       "Bash(npm test *)",
       "Bash(node -e \"require.resolve\\('@eslint/js'\\)\")",
       "Bash(node -e \"const rh = require\\('eslint-plugin-react-hooks'\\); console.log\\(Object.keys\\(rh.configs\\)\\); console.log\\(Object.keys\\(rh.configs.recommended\\)\\)\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(npm audit *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/helmet/package.json'\\).version\\)\")",
+      "Bash(git -C . log --oneline -5)",
+      "Bash(npm ls *)",
+      "Bash(npm ping *)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(ls node_modules/supertest/package.json node_modules/mongodb-memory-server/package.json 2>&1; echo \"---lockfile---\"; grep -c \"supertest\\\\|mongodb-memory-server\" package-lock.json 2>&1; echo \"---bg output---\"; tail -c 2000 '/c/Users/User/AppData/Local/Temp/claude/C--Users-User-Documents-AKWABA-COMBINED-fixed-akwaba-001/d20e5418-1528-4a0e-9924-df1e80f415b6/tasks/b8cj87nco.output' 2>&1)",
+      "Bash(mongod --version)",
+      "Bash(cat)",
+      "Bash(node /tmp/smoke.mjs)",
+      "Bash(node -e \"const c=require\\('./node_modules/mongodb-memory-server-core/package.json'\\); console.log\\(c.version\\)\")",
+      "Bash(git checkout *)",
+      "Bash(grep -E \"^supertest$|^mongodb-memory-server$\")",
+      "Bash(npx eslint *)",
+      "Bash(taskkill //F //FI \"WINDOWTITLE eq *node*\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess\")",
+      "Bash(powershell -Command \"Stop-Process -Id 22152 -Force\")"
     ]
   }
 }
