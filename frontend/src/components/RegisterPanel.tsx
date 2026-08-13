@@ -1,10 +1,62 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login, submitRegistrationStep, forgotPin, ApiError } from '../lib/api'
+import {
+  login,
+  submitRegistrationStep,
+  forgotPin,
+  getMyProfile,
+  initiatePayment,
+  verifyPayment,
+  ApiError,
+  type ParticipantProfile,
+} from '../lib/api'
 import { useToast } from './Toast'
 import WhatsAppIcon from './WhatsAppIcon'
+import PaymentProgress from './PaymentProgress'
 
 const DRAFT_KEY = 'akwaba_registration_draft'
+
+// ── Paystack Inline (popup) SDK ──
+// Loaded on demand (only once Step 3 is reached) rather than unconditionally
+// in index.html, so visitors who never get to checkout never fetch a
+// third-party script. The registration deposit uses resumeTransaction()
+// against a reference already initialized server-side (see
+// /api/payments/initiate) rather than PaystackPop.setup(), so the popup
+// can't be used to pay an amount our backend didn't validate first.
+declare global {
+  interface Window {
+    PaystackPop?: new () => {
+      resumeTransaction: (
+        accessCode: string,
+        opts: {
+          onSuccess: (transaction: { reference: string }) => void
+          onCancel: () => void
+          onError?: (error: unknown) => void
+        }
+      ) => void
+    }
+  }
+}
+
+const PAYSTACK_SCRIPT_SRC = 'https://js.paystack.co/v2/inline.js'
+let paystackScriptPromise: Promise<void> | null = null
+
+function loadPaystackScript(): Promise<void> {
+  if (window.PaystackPop) return Promise.resolve()
+  if (paystackScriptPromise) return paystackScriptPromise
+  paystackScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = PAYSTACK_SCRIPT_SRC
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => {
+      paystackScriptPromise = null
+      reject(new Error('Could not load the payment popup. Check your connection and try again.'))
+    }
+    document.head.appendChild(script)
+  })
+  return paystackScriptPromise
+}
 
 const DOC_TYPES = [
   { value: 'International Passport', icon: '📕', label: 'Int. Passport' },
@@ -86,12 +138,102 @@ export default function RegisterPanel() {
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotBusy, setForgotBusy] = useState(false)
 
+  // ── Step 3 deposit state ──
+  // Step 1 auto-logs the participant in (see routes/register.js), so by the
+  // time the wizard reaches Step 3 the same auth-cookie-gated
+  // /api/payments/* and /api/participant/me endpoints the dashboard uses
+  // already work here — no separate registration-only payment path needed.
+  const [depositProfile, setDepositProfile] = useState<ParticipantProfile | null>(null)
+  const [depositLoading, setDepositLoading] = useState(false)
+  const [depositAmount, setDepositAmount] = useState('')
+  const [depositBusy, setDepositBusy] = useState(false)
+
   useEffect(() => {
     formMountedAt.current = Date.now()
     if (draft.step > 1) {
       toast('Welcome back — your progress was restored.', 'info')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (step !== 3) return
+    let cancelled = false
+    async function loadDeposit() {
+      setDepositLoading(true)
+      try {
+        const p = await getMyProfile()
+        if (cancelled) return
+        setDepositProfile(p)
+        setDepositAmount(String(p.checkout?.minNextPayment ?? 100000))
+      } catch (err) {
+        if (cancelled) return
+        // No/expired session (e.g. Step 1 happened in a previous browser
+        // session and the localStorage draft outlived the 12h auth cookie) —
+        // there's no way to pay without one, so send them back to Step 1.
+        toast(
+          err instanceof ApiError && err.status === 401
+            ? 'Your session expired. Please restart from Step 1.'
+            : 'Could not load your deposit details. Please restart from Step 1.',
+          'error'
+        )
+        setStep(1)
+      } finally {
+        if (!cancelled) setDepositLoading(false)
+      }
+    }
+    void loadDeposit()
+    return () => {
+      cancelled = true
+    }
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleDeposit() {
+    if (!depositProfile) return
+    const amount = Number(depositAmount)
+    const minAllowed = depositProfile.checkout?.minNextPayment ?? 100000
+    if (!amount || amount <= 0) {
+      toast('Enter an amount greater than ₦0.', 'error')
+      return
+    }
+    if (amount < minAllowed) {
+      toast(`Your initial deposit must be at least ₦${minAllowed.toLocaleString()}.`, 'error')
+      return
+    }
+    setDepositBusy(true)
+    try {
+      const result = await initiatePayment(amount)
+      await loadPaystackScript()
+      if (!window.PaystackPop) throw new Error('Payment popup failed to load. Please try again.')
+      const popup = new window.PaystackPop()
+      popup.resumeTransaction(result.accessCode, {
+        onSuccess: async () => {
+          try {
+            const verify = await verifyPayment(result.reference)
+            if (verify.ok && verify.success) {
+              toast('Deposit received! You can now complete your registration.', 'success')
+            } else {
+              toast('Payment received — confirming with Paystack…', 'info')
+            }
+          } finally {
+            const updated = await getMyProfile().catch(() => null)
+            if (updated) setDepositProfile(updated)
+            setDepositBusy(false)
+          }
+        },
+        onCancel: () => {
+          toast('Payment cancelled.', 'info')
+          setDepositBusy(false)
+        },
+        onError: () => {
+          toast('Payment could not be completed. Please try again.', 'error')
+          setDepositBusy(false)
+        },
+      })
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Could not start payment.', 'error')
+      setDepositBusy(false)
+    }
+  }
 
   function persistDraft(next: Draft) {
     setDraft(next)
@@ -174,8 +316,11 @@ export default function RegisterPanel() {
     try {
       await submitRegistrationStep(3, { emailAddress: draft.emailAddress, accountPin, plan: draft.plan })
       localStorage.removeItem(DRAFT_KEY)
-      toast('Registration complete! Log in to pay securely with Paystack from your dashboard.', 'success')
-      setTimeout(() => setTab('login'), 1200)
+      // Step 1 already established the session cookie (auto-login), so
+      // there's no need to send them through the login form again — go
+      // straight to the dashboard.
+      toast('Registration complete! Taking you to your dashboard…', 'success')
+      setTimeout(() => navigate('/dashboard'), 1000)
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Submission failed. Please try again.', 'error')
     } finally {
@@ -462,16 +607,63 @@ export default function RegisterPanel() {
                       </select>
                     </Field>
 
-                    <div className="bg-ink/60 rounded-xl p-4 text-sm text-cream-dark leading-relaxed">
-                      💳 Payment is handled securely by Paystack — you'll pay from your dashboard right after you log
-                      in, no bank transfer needed.
-                    </div>
+                    <div className="text-cream text-sm font-semibold mt-2 mb-1">🔒 Initial Deposit</div>
+                    {depositLoading && !depositProfile ? (
+                      <div className="bg-ink/60 rounded-xl p-4 text-sm text-cream-dark leading-relaxed">
+                        Loading your deposit details…
+                      </div>
+                    ) : (depositProfile?.checkout?.amountPaid ?? 0) > 0 ? (
+                      <div className="bg-forest/20 border border-forest/40 rounded-xl p-4 flex flex-col gap-3">
+                        <p className="text-cream text-sm leading-relaxed">
+                          ✅ Deposit received — ₦{(depositProfile?.checkout?.amountPaid ?? 0).toLocaleString()} paid.
+                        </p>
+                        <PaymentProgress
+                          amountPaid={depositProfile?.checkout?.amountPaid ?? 0}
+                          tripTotal={depositProfile?.checkout?.tripTotal ?? 0}
+                        />
+                        <p className="text-cream-dark text-xs opacity-70">
+                          Any remaining balance can be settled anytime from your dashboard after you log in.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-ink/60 rounded-xl p-4 flex flex-col gap-3">
+                        <p className="text-cream-dark text-xs leading-relaxed">
+                          A minimum deposit of ₦{(depositProfile?.checkout?.minNextPayment ?? 100000).toLocaleString()} is
+                          required to secure your spot and complete registration. Paid securely via Paystack — you never
+                          leave this page.
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            min={depositProfile?.checkout?.minNextPayment ?? 100000}
+                            max={depositProfile?.checkout?.tripTotal}
+                            value={depositAmount}
+                            onChange={(e) => setDepositAmount(e.target.value)}
+                            placeholder="Amount in ₦"
+                            className={inputClass}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDeposit}
+                          disabled={depositBusy || depositLoading}
+                          className="bg-gold hover:bg-gold/90 disabled:opacity-60 text-ink py-3 rounded-full text-sm font-bold transition"
+                        >
+                          {depositBusy ? 'Processing…' : 'Pay Deposit with Paystack →'}
+                        </button>
+                      </div>
+                    )}
 
                     <div className="flex gap-3 mt-2">
                       <button type="button" onClick={() => setStep(2)} className={secondaryBtnClass}>
                         ← Back
                       </button>
-                      <button type="submit" disabled={busy} className={`${primaryBtnClass} !bg-forest hover:!bg-forest-mid`}>
+                      <button
+                        type="submit"
+                        disabled={busy || (depositProfile?.checkout?.amountPaid ?? 0) <= 0}
+                        className={`${primaryBtnClass} !bg-forest hover:!bg-forest-mid`}
+                        title={(depositProfile?.checkout?.amountPaid ?? 0) <= 0 ? 'Pay your initial deposit first' : undefined}
+                      >
                         {busy ? 'Submitting…' : 'Complete Registration'}
                       </button>
                     </div>

@@ -101,6 +101,10 @@ router.post('/initiate', requireParticipantAuth, requireCsrf, initiateLimiter, a
       return res.status(200).json({
         success: true,
         authorizationUrl: paystackData.authorization_url,
+        // Lets the frontend resume this transaction inline (Paystack popup)
+        // instead of a full-page redirect — used during registration, where
+        // navigating away mid-wizard would lose the user's place.
+        accessCode: paystackData.access_code,
         reference
       });
     } catch (paystackError) {

@@ -35,9 +35,12 @@
       that origin here too. style-src needs 'unsafe-inline' because several
       components set inline styles via React's style={{...}} prop; there's
       no script-src 'unsafe-inline'/'unsafe-eval', so this doesn't open up
-      script injection.
+      script injection. js.paystack.co / checkout.paystack.com are allow-listed
+      for script-src/frame-src/connect-src because the registration deposit
+      step loads Paystack's Inline JS popup on-page (see RegisterPanel.tsx)
+      instead of redirecting away like the dashboard's payment flow does.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://my-full-stack-app-cx43.onrender.com http://localhost:5000 http://localhost:* ws://localhost:*; base-uri 'self'; form-action 'self'; object-src 'none';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://js.paystack.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://js.paystack.co; connect-src 'self' https://my-full-stack-app-cx43.onrender.com http://localhost:5000 http://localhost:* ws://localhost:* https://api.paystack.co https://checkout.paystack.com; frame-src https://checkout.paystack.com https://js.paystack.co; base-uri 'self'; form-action 'self'; object-src 'none';" />
     <title>AKWABA 001 — Nigerian Passport Travels</title>
   </head>
   <body>

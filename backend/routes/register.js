@@ -159,7 +159,17 @@ router.post('/register/step', registerStepLimiter, async (req, res) => {
       });
 
       await newParticipant.save();
-      return res.status(201).json({ message: 'Profile created!', nextStep: 2 });
+
+      // Auto-login right after account creation. Steps 2/3 of registration
+      // (specifically the deposit payment at Step 3) need to call the
+      // existing auth-cookie-gated /api/payments/* endpoints before the
+      // wizard has finished — issuing the same session here that /api/login
+      // would issue means those endpoints work unchanged.
+      const token = issueToken(newParticipant.emailAddress);
+      const csrfToken = generateCsrfToken();
+      setAuthCookies(res, token, csrfToken);
+
+      return res.status(201).json({ message: 'Profile created!', nextStep: 2, csrfToken });
     }
 
     // Steps 2 & 3 act on an existing participant
@@ -219,13 +229,23 @@ router.post('/register/step', registerStepLimiter, async (req, res) => {
     }
 
     // ── STEP 3 — Checkout ──
-    // Payment itself happens later, through Paystack from the dashboard after
-    // login — this step just records the chosen plan. No manual bank
-    // transfer or receipt upload is collected here.
+    // The initial deposit is paid inline on this step (via Paystack,
+    // POST /api/payments/initiate + /verify — see routes/payments.js) before
+    // this route ever runs; here we just record the chosen plan and confirm
+    // that deposit actually landed. Any balance beyond the deposit is still
+    // settled later from the dashboard. No manual bank transfer or receipt
+    // upload is collected here.
     else if (currentStepNum === 3) {
       const plan = incomingData.plan || 'Full Payment';
       if (!oneOf(plan, ALLOWED_PLANS)) {
         return res.status(400).json({ error: 'Invalid payment plan.' });
+      }
+
+      const amountPaid = Number(participant.checkout?.amountPaid || 0);
+      if (amountPaid <= 0) {
+        return res.status(400).json({
+          error: `Please pay the initial deposit (min. ₦${MIN_INITIAL_DEPOSIT_NGN.toLocaleString()}) before completing registration.`
+        });
       }
 
       updatePayload = {
