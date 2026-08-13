@@ -119,11 +119,16 @@ router.post('/initiate', requireParticipantAuth, requireCsrf, initiateLimiter, a
 });
 
 // ─── 2. Client-side verify (called after Paystack redirects back) ───
-// GET /api/payments/verify/:reference
+// POST /api/payments/verify/:reference
 // This exists purely for fast UI feedback. The webhook (below) is the
 // authoritative confirmation path; this endpoint is safe to call redundantly
 // because applyConfirmedPayment() is idempotent per-reference.
-router.get('/verify/:reference', requireParticipantAuth, async (req, res) => {
+// POST + CSRF (not GET) because this call has a real side effect
+// (applyConfirmedPayment) gated only by the participant's auth cookie — a
+// bare GET would let a cross-site <img>/<script> tag trigger it using a
+// logged-in victim's cookies with no way to prove the request came from our
+// own frontend. The CSRF double-submit token closes that off.
+router.post('/verify/:reference', requireParticipantAuth, requireCsrf, async (req, res) => {
   try {
     const { reference } = req.params;
 

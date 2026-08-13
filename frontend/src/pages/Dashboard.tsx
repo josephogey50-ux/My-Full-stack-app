@@ -67,13 +67,17 @@ export default function Dashboard() {
     }
   }
 
+  // Returns whether a payment was newly confirmed, so load() knows to refresh
+  // the profile a second time and pick up the updated payment status.
   async function handlePaymentRedirect() {
     const reference = params.get('reference')
-    if (!reference) return
+    if (!reference) return false
+    let confirmed = false
     try {
       const result = await verifyPayment(reference)
       if (result.ok && result.success) {
         toast('Payment confirmed — thank you!', 'success')
+        confirmed = true
       } else if (result.ok && result.status) {
         toast(`Payment ${result.status}. If you were charged, contact us and we'll confirm it manually.`, 'error')
       } else {
@@ -85,11 +89,17 @@ export default function Dashboard() {
       params.delete('reference')
       setParams(params, { replace: true })
     }
+    return confirmed
   }
 
   async function load() {
-    await handlePaymentRedirect()
+    // Profile loads first — besides being what the page needs regardless,
+    // GET /participant/me is what hands back the CSRF token that the verify
+    // call below needs (verify is a CSRF-protected POST; this is a fresh
+    // page load after the Paystack redirect, so no token is cached yet).
     await refreshProfile()
+    const paymentConfirmed = await handlePaymentRedirect()
+    if (paymentConfirmed) await refreshProfile()
   }
 
   useEffect(() => {

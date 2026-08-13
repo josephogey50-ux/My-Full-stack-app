@@ -152,6 +152,7 @@ export default function RegisterPanel() {
     try {
       await submitRegistrationStep(2, {
         emailAddress: draft.emailAddress,
+        accountPin,
         docType: draft.docType,
         roomPreference: draft.roomPreference,
         roommateName: draft.roomPreference === 'paired' ? draft.roommateName : '',
@@ -171,7 +172,7 @@ export default function RegisterPanel() {
     e.preventDefault()
     setBusy(true)
     try {
-      await submitRegistrationStep(3, { emailAddress: draft.emailAddress, plan: draft.plan })
+      await submitRegistrationStep(3, { emailAddress: draft.emailAddress, accountPin, plan: draft.plan })
       localStorage.removeItem(DRAFT_KEY)
       toast('Registration complete! Log in to pay securely with Paystack from your dashboard.', 'success')
       setTimeout(() => setTab('login'), 1200)
@@ -385,6 +386,7 @@ export default function RegisterPanel() {
 
                 {step === 2 && (
                   <form ref={formRef} onSubmit={handleStep2} className="flex flex-col gap-4">
+                    <PinConfirmField accountPin={accountPin} setAccountPin={setAccountPin} pinVisible={pinVisible} setPinVisible={setPinVisible} />
                     <div className="text-cream text-sm font-semibold mb-1">🛂 Travel Document</div>
                     <div className="grid grid-cols-3 gap-2 mb-2">
                       {DOC_TYPES.map((d) => (
@@ -451,6 +453,7 @@ export default function RegisterPanel() {
 
                 {step === 3 && (
                   <form onSubmit={handleStep3} className="flex flex-col gap-4">
+                    <PinConfirmField accountPin={accountPin} setAccountPin={setAccountPin} pinVisible={pinVisible} setPinVisible={setPinVisible} />
                     <div className="text-cream text-sm font-semibold mb-1">💳 Payment Plan</div>
                     <Field label="Select Plan">
                       <select value={draft.plan} onChange={(e) => updateField('plan', e.target.value)} className={inputClass}>
@@ -566,5 +569,53 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="block text-cream-dark text-[13px] font-semibold mb-1.5 tracking-wide">{label}</span>
       {children}
     </label>
+  )
+}
+
+// ── Re-proves ownership of this registration on Steps 2 & 3 ──
+// The backend requires accountPin on these steps (see routes/register.js) so
+// that knowing/guessing someone's email alone can't be used to tamper with
+// their in-progress registration. Only rendered when we don't already have
+// the PIN in memory from Step 1 — e.g. after a page reload restored the
+// draft from localStorage (accountPin itself is deliberately never persisted
+// there), the user has to type it again before continuing.
+function PinConfirmField({
+  accountPin,
+  setAccountPin,
+  pinVisible,
+  setPinVisible,
+}: {
+  accountPin: string
+  setAccountPin: (v: string) => void
+  pinVisible: boolean
+  setPinVisible: (fn: (v: boolean) => boolean) => void
+}) {
+  if (accountPin) return null
+  return (
+    <Field label="Confirm Your 4-Digit PIN">
+      <div className="flex gap-2">
+        <input
+          required
+          type={pinVisible ? 'text' : 'password'}
+          pattern="[0-9]{4}"
+          inputMode="numeric"
+          maxLength={4}
+          value={accountPin}
+          onChange={(e) => setAccountPin(e.target.value)}
+          placeholder="••••"
+          className={inputClass}
+        />
+        <button
+          type="button"
+          onClick={() => setPinVisible((v) => !v)}
+          className="px-3 rounded-lg bg-white/5 text-cream-dark text-xs font-bold shrink-0"
+        >
+          {pinVisible ? 'HIDE' : 'PEEP'}
+        </button>
+      </div>
+      <span className="text-xs text-cream-dark opacity-60 mt-1 block">
+        We need this to confirm it's really you continuing this registration.
+      </span>
+    </Field>
   )
 }

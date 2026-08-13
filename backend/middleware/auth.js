@@ -15,7 +15,12 @@ export function requireParticipantAuth(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Pinning algorithms here means jwt.verify only ever accepts a token
+    // signed with the exact algorithm we sign with (see issueToken in
+    // routes/register.js) — without it, a token whose header claims a
+    // different algorithm (e.g. "none", or an HMAC signed with the public
+    // key in an RS256 setup) would otherwise be considered for verification.
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.participantEmail = decoded.email;
     next();
   } catch (err) {
@@ -36,7 +41,7 @@ export function requireAdmin(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (decoded.scope !== 'admin') {
       return res.status(401).json({ error: 'Invalid admin session.' });
     }

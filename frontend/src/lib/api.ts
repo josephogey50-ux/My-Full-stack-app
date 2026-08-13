@@ -46,8 +46,10 @@ function csrfHeaders(): Record<string, string> {
 
 // ── Registration (multi-step) ──────────────────────────────────────────
 // step 1: surname, firstName, emailAddress, whatsAppNumber, accountPin
-// step 2: emailAddress, docType, roomPreference, roommateName?, emergencyContact
-// step 3: emailAddress, plan
+// step 2: emailAddress, accountPin, docType, roomPreference, roommateName?, emergencyContact
+// step 3: emailAddress, accountPin, plan
+// accountPin is required again on steps 2 & 3 — the backend uses it to prove
+// the caller actually owns this registration, not just knows its email.
 export async function submitRegistrationStep(step: 1 | 2 | 3, fields: Record<string, string>) {
   const response = await fetch(`${API_BASE}/api/register/step`, {
     method: 'POST',
@@ -191,7 +193,9 @@ export async function initiatePayment(amount: number) {
 
 export async function verifyPayment(reference: string) {
   const response = await fetch(`${API_BASE}/api/payments/verify/${encodeURIComponent(reference)}`, {
+    method: 'POST',
     credentials: 'include',
+    headers: csrfHeaders(),
   })
   const result = await parseJson(response)
   return { ok: response.ok, ...result } as { ok: boolean; success?: boolean; status?: string; error?: string }

@@ -43,7 +43,7 @@ router.post('/login', adminLoginLimiter, (req, res) => {
     return res.status(400).json({ error: 'Please enter your name.' });
   }
   const name = adminName.trim().slice(0, 80);
-  const session = jwt.sign({ scope: 'admin', name }, process.env.JWT_SECRET, { expiresIn: ADMIN_SESSION_EXPIRY });
+  const session = jwt.sign({ scope: 'admin', name }, process.env.JWT_SECRET, { expiresIn: ADMIN_SESSION_EXPIRY, algorithm: 'HS256' });
   const csrfToken = generateCsrfToken();
   res.cookie(ADMIN_COOKIE, session, authCookieOptions(ADMIN_SESSION_MS));
   res.cookie(CSRF_COOKIE, csrfToken, csrfCookieOptions(ADMIN_SESSION_MS));
@@ -85,7 +85,12 @@ router.get('/registrants', async (req, res) => {
     const { q, status, step, page = 1, limit = 25 } = req.query;
     const filter = {};
 
-    if (status) filter['checkout.paymentStatus'] = status;
+    if (status) {
+      if (!oneOf(status, PAYMENT_STATUSES)) {
+        return res.status(400).json({ error: `status must be one of: ${PAYMENT_STATUSES.join(', ')}` });
+      }
+      filter['checkout.paymentStatus'] = status;
+    }
     if (step) filter.currentStep = parseInt(step, 10);
     if (q) {
       if (String(q).trim().length > MAX_SEARCH_QUERY_LENGTH) {
@@ -166,7 +171,12 @@ router.get('/registrants/export', async (req, res) => {
   try {
     const { q, status, step } = req.query;
     const filter = {};
-    if (status) filter['checkout.paymentStatus'] = status;
+    if (status) {
+      if (!oneOf(status, PAYMENT_STATUSES)) {
+        return res.status(400).json({ error: `status must be one of: ${PAYMENT_STATUSES.join(', ')}` });
+      }
+      filter['checkout.paymentStatus'] = status;
+    }
     if (step) filter.currentStep = parseInt(step, 10);
     if (q) {
       if (String(q).trim().length > MAX_SEARCH_QUERY_LENGTH) {

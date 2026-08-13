@@ -30,7 +30,7 @@ const LOCKOUT_THRESHOLD = 5;
 const LOCKOUT_MINUTES = 15;
 
 function issueToken(email) {
-  return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
+  return jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY, algorithm: 'HS256' });
 }
 
 function setAuthCookies(res, token, csrfToken) {
@@ -167,6 +167,22 @@ router.post('/register/step', registerStepLimiter, async (req, res) => {
     if (!participant) {
       return res.status(404).json({ error: 'Session not found. Please restart from Step 1.' });
     }
+
+    // ── Ownership check ──
+    // Everything past Step 1 was previously identified by emailAddress
+    // alone, which isn't a secret — anyone who knew (or guessed/enumerated)
+    // a registrant's email could submit Step 2/3 data on their behalf and
+    // silently overwrite their logistics or payment plan. The PIN set at
+    // Step 1 is this app's actual authentication secret, so require it here
+    // too, exactly as login does.
+    if (!isValidPin(incomingData.accountPin)) {
+      return res.status(400).json({ error: 'Your 4-digit PIN is required to continue.' });
+    }
+    const pinMatches = await bcrypt.compare(incomingData.accountPin.trim(), participant.accountPin);
+    if (!pinMatches) {
+      return res.status(401).json({ error: 'Incorrect PIN.' });
+    }
+
     if (participant.currentStep < currentStepNum) {
       return res.status(400).json({ error: `Please complete Step ${participant.currentStep} first.` });
     }
