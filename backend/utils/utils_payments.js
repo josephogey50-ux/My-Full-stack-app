@@ -134,7 +134,14 @@ export async function applyConfirmedPayment({ reference, amountNaira, channel })
         }
       }
     ],
-    { new: true }
+    // Mongoose 9 refuses an array (aggregation-pipeline) update unless this
+    // is set explicitly — without it this throws "Cannot pass an array to
+    // query updates unless the `updatePipeline` option is set", so every
+    // payment verification (both this client-triggered path and the
+    // Paystack webhook, which both call this function) failed with a 502
+    // and no participant ever actually got credited, no matter how many
+    // times Paystack confirmed the charge.
+    { new: true, updatePipeline: true }
   );
 
   // null means: no participant had a *pending* payment with this reference —

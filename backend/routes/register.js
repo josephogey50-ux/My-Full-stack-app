@@ -97,7 +97,7 @@ function looksLikeBot(incomingData) {
 // Tighter than the global /api ceiling (300/15min) — account creation
 // specifically is the expensive-to-clean-up action, so it gets its own
 // stricter per-IP limit on top.
-const registerStepLimiter = rateLimit({
+const createAccountLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,
   standardHeaders: true,
@@ -105,8 +105,32 @@ const registerStepLimiter = rateLimit({
   message: { error: 'Too many registration attempts from this network. Please try again later.' }
 });
 
+// Steps 2 & 3 act on an already-created, PIN-gated participant, not a fresh
+// account — a legitimate registrant routinely makes several requests here
+// (one per step, plus retries on a typo'd PIN or a validation error), so
+// reusing createAccountLimiter's 15/hour budget across all three steps meant
+// that budget was gone before the wizard was even finished, especially for
+// anyone sharing a mobile-carrier/NAT IP with other registrants — they'd get
+// a flat "too many attempts" 429 mid-wizard with no way to proceed for an
+// hour. This keeps a real (if more generous) ceiling — steps 2/3 are still
+// the only unlockout-protected place a stolen/guessed accountPin could be
+// brute-forced — while no longer punishing normal multi-step traffic.
+const continueRegistrationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts from this network. Please try again later.' }
+});
+
+function registrationStepLimiter(req, res, next) {
+  const stepNum = parseInt(req.body?.step, 10);
+  if (stepNum === 1) return createAccountLimiter(req, res, next);
+  return continueRegistrationLimiter(req, res, next);
+}
+
 // ─── 1. REGISTRATION STEP ROUTE ───
-router.post('/register/step', registerStepLimiter, async (req, res) => {
+router.post('/register/step', registrationStepLimiter, async (req, res) => {
   const { step, emailAddress, ...incomingData } = req.body;
 
   const currentStepNum = parseInt(step, 10);
@@ -335,7 +359,13 @@ router.post('/login', loginLimiter, async (req, res) => {
               }
             }
           }
-        ]
+        ],
+        // Mongoose 9 refuses an array (aggregation-pipeline) update unless
+        // this is set explicitly — without it, this throws
+        // "Cannot pass an array to query updates unless the `updatePipeline`
+        // option is set" and every failed-login attempt silently fails to
+        // record, so the lockout above never actually engages.
+        { updatePipeline: true }
       );
       return res.status(401).json(genericError);
     }

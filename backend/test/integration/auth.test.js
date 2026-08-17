@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import { startTestEnv, stopTestEnv, clearDb, extractCookies } from '../helpers/testEnv.js';
+import Participant from '../../model/Participant.js';
 
 let app;
 
@@ -110,13 +111,34 @@ describe('POST /api/register/step — steps 2 & 3 require the account PIN', () =
     expect(res.status).toBe(401);
   });
 
-  it('accepts step 3 with the correct PIN', async () => {
+  it('rejects step 3 before any deposit has been paid', async () => {
     await request(app).post('/api/register/step').send({
       step: 2,
       emailAddress: email,
       accountPin: '1234',
       emergencyContact: 'John Doe +2348000000000'
     });
+    const res = await request(app).post('/api/register/step').send({
+      step: 3,
+      emailAddress: email,
+      accountPin: '1234',
+      plan: 'Full Payment'
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/deposit/i);
+  });
+
+  it('accepts step 3 with the correct PIN once a deposit has landed', async () => {
+    await request(app).post('/api/register/step').send({
+      step: 2,
+      emailAddress: email,
+      accountPin: '1234',
+      emergencyContact: 'John Doe +2348000000000'
+    });
+    // Deposit collection itself (Paystack initiate/verify) is covered in
+    // payments.test.js — here we only need amountPaid to already be set, the
+    // precondition this step checks.
+    await Participant.updateOne({ emailAddress: email }, { $set: { 'checkout.amountPaid': 100000 } });
     const res = await request(app).post('/api/register/step').send({
       step: 3,
       emailAddress: email,

@@ -667,6 +667,14 @@ export default function RegisterPanel() {
                         {busy ? 'Submitting…' : 'Complete Registration'}
                       </button>
                     </div>
+                    {/* `title` tooltips never show on touch devices, so the
+                        disabled reason above needs a visible fallback — most
+                        of this app's traffic is mobile. */}
+                    {!busy && (depositProfile?.checkout?.amountPaid ?? 0) <= 0 && (
+                      <p className="text-xs text-gold/80 text-center -mt-1">
+                        Pay your initial deposit above to unlock this button.
+                      </p>
+                    )}
                   </form>
                 )}
               </>
