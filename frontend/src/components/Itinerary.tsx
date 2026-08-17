@@ -40,7 +40,7 @@ const DAYS: ItineraryDay[] = [
       {
         time: '10:30',
         stop: 'Hillacondji border (Benin → Togo)',
-        note: 'Yellow fever card checked. You may be pressed to take a meningitis vaccine — you can decline politely.',
+        note: 'Passport Stamp.',
       },
       { time: '12:00', stop: 'Lomé, Togo — lunch stop', note: 'Coastal road, quick' },
       { time: '14:00', stop: 'Aflao border (Togo → Ghana)', note: 'The busiest and most chaotic. Stay with the coach group. Change to GHS.' },
