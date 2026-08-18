@@ -2,7 +2,7 @@ import { useState } from 'react'
 import itineraryBg from '../assets/images/itinerary-bg.jpg.png'
 
 interface ScheduleStop {
-  time: string
+  time?: string
   stop: string
   note?: string
 }
@@ -23,34 +23,33 @@ interface ItineraryDay {
 const DAYS: ItineraryDay[] = [
   {
     day: 1,
-    date: 'Transit Day',
+    date: 'Wed, Nov 25 — Transit Day',
     location: 'Lagos → Accra',
     countryCode: 'NG → GH',
     title: 'Transit: Lagos → Accra',
     description:
-      'Distance ~470 km · Expect 14–17 hrs on the road, crossing four countries — Nigeria, Benin, Togo, and Ghana — in a single push. Departure at 04:00 is non-negotiable: Seme opens at 06:00 and is worst between 09:00–14:00.',
+      'Distance ~470 km · Expect 14–17 hrs on the road, crossing four countries — Nigeria, Benin, Togo, and Ghana — in a single push. Seme opens at 06:00 and is worst between 09:00–14:00.',
     highlight: 'Aflao border (Togo → Ghana) — the busiest and most chaotic crossing. Stay with the coach group.',
     distanceKm: 470,
     overnightStay: 'Accra (Osu or Adabraka)',
     schedule: [
-      { time: '05:00', stop: 'Assemble at terminal', note: 'Full head count before boarding' },
-      { time: '05:30', stop: 'Depart Lagos', note: 'Non-negotiable. Seme opens 06:00 and is worst 09:00–14:00' },
-      { time: '07:00', stop: 'Seme border (Nigeria → Benin)', note: 'Nigerian exit + Benin entry stamps. Change NGN→XOF here.' },
-      { time: '08:30', stop: 'Cotonou, Benin — brief comfort stop' },
+      { stop: 'Assemble at terminal', note: 'Full head count before boarding' },
+      { stop: 'Depart Lagos', note: 'Seme opens 06:00 and is worst 09:00–14:00' },
+      { stop: 'Seme border (Nigeria → Benin)', note: 'Nigerian exit + Benin entry stamps. Change NGN→XOF here.' },
+      { stop: 'Cotonou, Benin — brief comfort stop' },
       {
-        time: '10:30',
         stop: 'Hillacondji border (Benin → Togo)',
         note: 'Passport Stamp.',
       },
-      { time: '12:00', stop: 'Lomé, Togo — lunch stop', note: 'Coastal road, quick' },
-      { time: '14:00', stop: 'Aflao border (Togo → Ghana)', note: 'The busiest and most chaotic. Stay with the coach group. Change to GHS.' },
-      { time: '15:00', stop: 'Aflao → Accra', note: 'Final 4 hrs' },
-      { time: '19:00–22:00', stop: 'Arrive Accra', note: 'Check in, informal dinner near lodging, sleep' },
+      { stop: 'Lomé, Togo — lunch stop', note: 'Coastal road, quick' },
+      { stop: 'Aflao border (Togo → Ghana)', note: 'The busiest and most chaotic. Stay with the coach group. Change to GHS.' },
+      { stop: 'Aflao → Accra', note: 'Final 4 hrs' },
+      { stop: 'Arrive Accra', note: 'Check in, informal dinner near lodging, sleep' },
     ],
   },
   {
     day: 2,
-    date: 'City Day',
+    date: 'Thu, Nov 26 — City Day',
     location: 'Accra',
     countryCode: 'GH',
     title: 'Accra: Heritage, Culture & Nightlife',
@@ -81,7 +80,7 @@ const DAYS: ItineraryDay[] = [
   },
   {
     day: 3,
-    date: 'The Heaviest Day',
+    date: 'Fri, Nov 27 — The Heaviest Day',
     location: 'Accra → Cape Coast',
     countryCode: 'GH',
     title: 'Central Region: Rainforest & The Castles',
@@ -106,7 +105,7 @@ const DAYS: ItineraryDay[] = [
   },
   {
     day: 4,
-    date: 'Coast & Departure',
+    date: 'Sat, Nov 28 — Coast & Departure',
     location: 'Elmina → Accra',
     countryCode: 'GH → NG',
     title: 'Elmina, Beach, and the Road Home',
@@ -127,7 +126,7 @@ const DAYS: ItineraryDay[] = [
   },
   {
     day: 5,
-    date: 'Arrival',
+    date: 'Sun, Nov 29 — Arrival',
     location: 'Lagos',
     countryCode: 'NG',
     title: 'Arrive Lagos',
@@ -199,7 +198,9 @@ export default function Itinerary() {
               <div className="flex flex-col gap-3.5 mb-6 border-t border-cream/10 pt-6">
                 {day.schedule.map((s, i) => (
                   <div key={i} className="flex gap-4 items-start">
-                    <span className="font-mono-custom text-xs text-gold shrink-0 w-[74px] pt-0.5">{s.time}</span>
+                    {s.time && (
+                      <span className="font-mono-custom text-xs text-gold shrink-0 w-[74px] pt-0.5">{s.time}</span>
+                    )}
                     <div>
                       <div className="text-cream text-sm font-semibold">{s.stop}</div>
                       {s.note && <div className="text-cream-dark text-xs leading-relaxed opacity-65 mt-0.5">{s.note}</div>}
