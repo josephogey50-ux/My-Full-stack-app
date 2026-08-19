@@ -1,4 +1,6 @@
 import Participant from '../model/Participant.js';
+import { sendPaymentConfirmationEmail } from './mailer.js';
+import logger from './logger.js';
 
 // ─── Trip cost config ───
 // Single source of truth for how much the trip costs. Read once at module
@@ -147,6 +149,23 @@ export async function applyConfirmedPayment({ reference, amountNaira, channel })
   // null means: no participant had a *pending* payment with this reference —
   // either it was already confirmed by the other path (webhook vs. verify
   // race), or the reference is bogus. Caller decides how to report that.
+  if (updated) {
+    // Best-effort — a mail-provider hiccup must never undo a payment that's
+    // already been credited, so this is deliberately fire-and-forget from
+    // the caller's perspective (webhook already responded 200; the client
+    // verify/resync response doesn't depend on this either).
+    const remaining = Math.max(0, Math.round((TRIP_TOTAL_NAIRA - (updated.checkout?.amountPaid || 0)) * 100) / 100);
+    sendPaymentConfirmationEmail(updated.emailAddress, {
+      firstName: updated.firstName,
+      amountPaid: amountNaira,
+      amountTotalPaid: updated.checkout?.amountPaid || 0,
+      tripTotal: TRIP_TOTAL_NAIRA,
+      remainingBalance: remaining
+    }).catch((err) => {
+      logger.error({ err, emailAddress: updated.emailAddress, reference }, 'Failed to send payment confirmation email');
+    });
+  }
+
   return updated;
 }
 

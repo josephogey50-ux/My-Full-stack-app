@@ -27,6 +27,18 @@ const initiateLimiter = rateLimit({
   message: { error: 'Too many payment attempts. Please try again in a while.' }
 });
 
+// Generous enough to cover the dashboard's own background poll (every 45s,
+// so ~80/hour if a tab is left open continuously) plus manual clicks on the
+// "Check for Updates" button, without opening this up to abuse — it can
+// only ever re-verify the caller's own references against Paystack.
+const resyncLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many status checks. Please try again shortly.' }
+});
+
 function remainingBalance(participant) {
   const paid = Number(participant.checkout?.amountPaid || 0);
   return Math.max(0, Math.round((TRIP_TOTAL_NAIRA - paid) * 100) / 100);
@@ -164,6 +176,59 @@ router.post('/verify/:reference', requireParticipantAuth, requireCsrf, async (re
   } catch (error) {
     const isDev = process.env.NODE_ENV !== 'production';
     res.status(502).json({ error: 'Could not verify payment.', ...(isDev && { details: error.message }) });
+  }
+});
+
+// ─── 3. Resync — reconcile every still-pending payment against Paystack ───
+// POST /api/payments/resync
+// The webhook is the normal confirmation path, but it can fail silently (a
+// transient error after Paystack's retry window, the endpoint being
+// misconfigured on Paystack's side, etc.) — and a participant who paid via
+// a redirect-away channel (bank transfer, USSD) may never land back on
+// /dashboard?reference=... at all if they close the tab first. This gives
+// every "pending" payment on the account a second, independent chance to be
+// confirmed straight from Paystack's own record of it, not from a webhook
+// or a specific redirect actually arriving. Safe to call as often as the
+// rate limit allows — applyConfirmedPayment() is idempotent per-reference.
+router.post('/resync', requireParticipantAuth, requireCsrf, resyncLimiter, async (req, res) => {
+  try {
+    const participant = await Participant.findOne({ emailAddress: req.participantEmail });
+    if (!participant) return res.status(404).json({ error: 'Participant record not found.' });
+
+    const pending = (participant.checkout?.payments || []).filter((p) => p.status === 'pending');
+    let confirmedCount = 0;
+
+    for (const p of pending) {
+      try {
+        const verification = await paystackVerifyTransaction(p.reference);
+        if (verification.status === 'success') {
+          await applyConfirmedPayment({
+            reference: p.reference,
+            amountNaira: koboToNairaSafe(verification.amount),
+            channel: verification.channel
+          });
+          confirmedCount += 1;
+        } else if (verification.status === 'failed' || verification.status === 'abandoned' || verification.status === 'reversed') {
+          // Terminal, non-success outcome — stop re-checking it every poll.
+          // Anything else (pending/ongoing/processing/queued) is left alone
+          // to be picked up on a later resync.
+          await Participant.updateOne(
+            { emailAddress: participant.emailAddress, 'checkout.payments.reference': p.reference, 'checkout.payments.status': 'pending' },
+            { $set: { 'checkout.payments.$.status': 'failed' } }
+          );
+        }
+      } catch {
+        // One reference failing to verify (e.g. a transient Paystack API
+        // error) shouldn't stop the rest of the account's pending payments
+        // from being checked.
+      }
+    }
+
+    const finalDoc = await Participant.findOne({ emailAddress: req.participantEmail });
+    res.status(200).json({ success: true, confirmedCount, participant: summarizeForSelf(finalDoc) });
+  } catch (error) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(502).json({ error: 'Could not check payment status.', ...(isDev && { details: error.message }) });
   }
 });
 

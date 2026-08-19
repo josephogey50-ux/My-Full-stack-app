@@ -35,3 +35,27 @@ export async function sendResetPinEmail(to, resetUrl) {
     `
   });
 }
+
+// Fired from applyConfirmedPayment() — the single place both the Paystack
+// webhook and every client-triggered verify/resync path funnel through — so
+// every payment that actually gets credited sends exactly one of these,
+// regardless of which path confirmed it.
+export async function sendPaymentConfirmationEmail(to, { firstName, amountPaid, amountTotalPaid, tripTotal, remainingBalance }) {
+  const isPaidInFull = remainingBalance <= 0;
+  await getTransporter().sendMail({
+    from: `"AKWABA 001" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: isPaidInFull ? 'Payment received — you\'re fully paid for AKWABA 001! 🎉' : 'Payment received — AKWABA 001',
+    html: `
+      <p>Hi ${firstName || 'there'},</p>
+      <p>We've received your payment of <strong>₦${amountPaid.toLocaleString()}</strong> for AKWABA 001.</p>
+      <p>Total paid so far: <strong>₦${amountTotalPaid.toLocaleString()}</strong> of ₦${tripTotal.toLocaleString()}.</p>
+      ${
+        isPaidInFull
+          ? '<p>You\'re fully paid up — see you on the road! 🎉</p>'
+          : `<p>Remaining balance: <strong>₦${remainingBalance.toLocaleString()}</strong>. You can settle this anytime from your dashboard.</p>`
+      }
+      <p>You can review your full payment status and receipt from your dashboard at any time.</p>
+    `
+  });
+}

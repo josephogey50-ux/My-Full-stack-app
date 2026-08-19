@@ -207,6 +207,20 @@ export async function verifyPayment(reference: string) {
   return { ok: response.ok, ...result } as { ok: boolean; success?: boolean; status?: string; error?: string }
 }
 
+// Re-checks every still-pending payment on this account directly against
+// Paystack, independent of the webhook and of whether the participant ever
+// landed back on a `?reference=...` redirect. Safe to call repeatedly.
+export async function resyncPayments() {
+  const response = await fetch(`${API_BASE}/api/payments/resync`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: csrfHeaders(),
+  })
+  const result = await parseJson(response)
+  if (!response.ok) throw new ApiError(result.error || `Error ${response.status}`, response.status)
+  return result as { success: true; confirmedCount: number }
+}
+
 // ── Public ────────────────────────────────────────────────────────────
 export interface ConvoyStatus {
   total: number

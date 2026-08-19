@@ -8,6 +8,7 @@ import {
   getMyProfile,
   initiatePayment,
   logout as apiLogout,
+  resyncPayments,
   updateMyLogistics,
   verifyPayment,
   type ParticipantProfile,
@@ -31,6 +32,7 @@ export default function Dashboard() {
   // the one moment their payment status is genuinely stale, instead of the
   // page silently showing pre-payment numbers for a beat.
   const [confirmingPayment, setConfirmingPayment] = useState(false)
+  const [syncingPayment, setSyncingPayment] = useState(false)
 
   // ── Self-service logistics editing ──
   const [editingLogistics, setEditingLogistics] = useState(false)
@@ -99,6 +101,30 @@ export default function Dashboard() {
     return confirmed
   }
 
+  // Reconciles every still-pending payment on this account directly against
+  // Paystack — independent of the webhook and of whether a `?reference=...`
+  // redirect ever happened. This is what actually self-heals a payment that
+  // the webhook silently failed to confirm, or that was made through a
+  // channel (bank transfer/USSD) the participant never redirected back from.
+  // `silent`: true for the background poll (nothing to say when there's
+  // nothing new), false for the explicit "Check for Updates" button.
+  async function syncPendingPayments({ silent }: { silent: boolean }) {
+    const prevPaid = amountPaidRef.current
+    try {
+      const result = await resyncPayments()
+      if (result.confirmedCount > 0) {
+        await refreshProfile()
+        if (amountPaidRef.current > prevPaid) {
+          toast('Payment confirmed — your balance has been updated.', 'success')
+        }
+      } else if (!silent) {
+        toast('No new payments found — still pending on Paystack\'s side.', 'info')
+      }
+    } catch (err) {
+      if (!silent) toast(err instanceof ApiError ? err.message : 'Could not check payment status.', 'error')
+    }
+  }
+
   async function load() {
     // Profile loads first — besides being what the page needs regardless,
     // GET /participant/me is what hands back the CSRF token that the verify
@@ -106,7 +132,14 @@ export default function Dashboard() {
     // page load after the Paystack redirect, so no token is cached yet).
     await refreshProfile()
     const paymentConfirmed = await handlePaymentRedirect()
-    if (paymentConfirmed) await refreshProfile()
+    if (paymentConfirmed) {
+      await refreshProfile()
+    } else {
+      // No fresh redirect reference to confirm (or it didn't pan out) —
+      // still worth reconciling any other pending payment on the account,
+      // e.g. from an earlier session whose tab was closed mid-flow.
+      await syncPendingPayments({ silent: true })
+    }
   }
 
   useEffect(() => {
@@ -116,36 +149,29 @@ export default function Dashboard() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Realtime payment status ──
-  // The Paystack webhook is the authoritative confirmation and can land a
-  // few seconds after the browser redirect — or entirely out-of-band, for a
-  // bank transfer/USSD payment that never sends the participant back through
-  // this page at all. Poll quietly in the background whenever a balance is
-  // still outstanding, so someone sitting on their dashboard sees it clear
-  // on its own instead of needing to know to refresh.
+  // The Paystack webhook is the authoritative confirmation path and can land
+  // a few seconds after the browser redirect — or entirely out-of-band, for
+  // a bank transfer/USSD payment that never sends the participant back
+  // through this page at all. Poll in the background (same cadence as the
+  // landing page's Convoy widget) whenever a balance is still outstanding,
+  // actively re-checking with Paystack rather than just re-reading the DB —
+  // so a webhook that silently failed still gets corrected automatically.
   const hasOutstandingBalance = (profile?.checkout?.remainingBalance ?? 0) > 0
   const amountPaidRef = useRef(0)
   amountPaidRef.current = profile?.checkout?.amountPaid ?? 0
   useEffect(() => {
     if (!hasOutstandingBalance) return
-    let cancelled = false
-    const interval = setInterval(async () => {
-      try {
-        const p = await getMyProfile()
-        if (cancelled) return
-        const nextPaid = p.checkout?.amountPaid ?? 0
-        if (nextPaid > amountPaidRef.current) {
-          toast('Payment confirmed — your balance has been updated.', 'success')
-        }
-        setProfile(p)
-      } catch {
-        // Silent — this is a background refresh, not a user-initiated action.
-      }
-    }, 20_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
+    const interval = setInterval(() => {
+      void syncPendingPayments({ silent: true })
+    }, 45_000)
+    return () => clearInterval(interval)
   }, [hasOutstandingBalance]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleManualSync() {
+    setSyncingPayment(true)
+    await syncPendingPayments({ silent: false })
+    setSyncingPayment(false)
+  }
 
   async function handlePay() {
     if (!profile) return
@@ -377,7 +403,20 @@ export default function Dashboard() {
             </div>
           )}
 
-          <Section title="💳 Payment">
+          <Section
+            title="💳 Payment"
+            action={
+              !confirmingPayment && (
+                <button
+                  onClick={handleManualSync}
+                  disabled={syncingPayment}
+                  className="text-rust text-xs font-semibold hover:underline disabled:opacity-60"
+                >
+                  {syncingPayment ? 'Checking…' : '🔄 Check for Updates'}
+                </button>
+              )
+            }
+          >
             <Item label="Plan" value={profile.checkout?.plan || '—'} />
             <Item label="Status" value={profile.checkout?.paymentStatus || 'Pending'} />
             <Item label="Amount Paid" value={`₦${amountPaid.toLocaleString()}`} />
@@ -517,10 +556,21 @@ export default function Dashboard() {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <div className="mb-8">
-      <h2 className="font-display text-lg font-semibold text-ink mb-4">{title}</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-display text-lg font-semibold text-ink">{title}</h2>
+        {action}
+      </div>
       <div className="grid sm:grid-cols-2 gap-4">{children}</div>
     </div>
   )
