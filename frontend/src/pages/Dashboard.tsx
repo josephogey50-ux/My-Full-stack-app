@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import logo from '../assets/images/logo.png'
 import {
@@ -26,6 +26,11 @@ export default function Dashboard() {
   const [payAmount, setPayAmount] = useState('')
   const [payBusy, setPayBusy] = useState(false)
   const [receiptLoading, setReceiptLoading] = useState(false)
+  // True only while the post-Paystack-redirect verify call (below) is
+  // in flight — gives the participant an explicit "we're on it" signal for
+  // the one moment their payment status is genuinely stale, instead of the
+  // page silently showing pre-payment numbers for a beat.
+  const [confirmingPayment, setConfirmingPayment] = useState(false)
 
   // ── Self-service logistics editing ──
   const [editingLogistics, setEditingLogistics] = useState(false)
@@ -72,6 +77,7 @@ export default function Dashboard() {
   async function handlePaymentRedirect() {
     const reference = params.get('reference')
     if (!reference) return false
+    setConfirmingPayment(true)
     let confirmed = false
     try {
       const result = await verifyPayment(reference)
@@ -88,6 +94,7 @@ export default function Dashboard() {
     } finally {
       params.delete('reference')
       setParams(params, { replace: true })
+      setConfirmingPayment(false)
     }
     return confirmed
   }
@@ -107,6 +114,38 @@ export default function Dashboard() {
     // not synchronously in this effect body — standard fetch-on-mount.
     void load() // eslint-disable-line react-hooks/set-state-in-effect
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Realtime payment status ──
+  // The Paystack webhook is the authoritative confirmation and can land a
+  // few seconds after the browser redirect — or entirely out-of-band, for a
+  // bank transfer/USSD payment that never sends the participant back through
+  // this page at all. Poll quietly in the background whenever a balance is
+  // still outstanding, so someone sitting on their dashboard sees it clear
+  // on its own instead of needing to know to refresh.
+  const hasOutstandingBalance = (profile?.checkout?.remainingBalance ?? 0) > 0
+  const amountPaidRef = useRef(0)
+  amountPaidRef.current = profile?.checkout?.amountPaid ?? 0
+  useEffect(() => {
+    if (!hasOutstandingBalance) return
+    let cancelled = false
+    const interval = setInterval(async () => {
+      try {
+        const p = await getMyProfile()
+        if (cancelled) return
+        const nextPaid = p.checkout?.amountPaid ?? 0
+        if (nextPaid > amountPaidRef.current) {
+          toast('Payment confirmed — your balance has been updated.', 'success')
+        }
+        setProfile(p)
+      } catch {
+        // Silent — this is a background refresh, not a user-initiated action.
+      }
+    }, 20_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [hasOutstandingBalance]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePay() {
     if (!profile) return
@@ -330,6 +369,13 @@ export default function Dashboard() {
               </form>
             )}
           </div>
+
+          {confirmingPayment && (
+            <div className="bg-gold/10 border border-gold/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+              <span className="w-4 h-4 rounded-full border-2 border-gold border-t-transparent animate-spin shrink-0" />
+              <p className="text-ink text-sm font-medium">Confirming your payment with Paystack…</p>
+            </div>
+          )}
 
           <Section title="💳 Payment">
             <Item label="Plan" value={profile.checkout?.plan || '—'} />

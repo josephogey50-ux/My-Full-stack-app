@@ -101,7 +101,7 @@ function loadDraft(): Draft {
   }
 }
 
-export default function RegisterPanel() {
+export default function RegisterPanel({ session }: { session?: ParticipantProfile | null }) {
   const toast = useToast()
   const navigate = useNavigate()
   const [tab, setTab] = useState<'register' | 'login'>('register')
@@ -116,6 +116,11 @@ export default function RegisterPanel() {
   const [pinVisible, setPinVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [alreadyRegistered, setAlreadyRegistered] = useState(false)
+  // Set once Landing's session check confirms this browser already finished
+  // registration (currentStep >= 4) — swaps the whole wizard out for a
+  // "you're already in" card instead of letting a returning visitor stumble
+  // back into Step 1 and hit a 409.
+  const [alreadyComplete, setAlreadyComplete] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
   // ── Bot-protection fields for Step 1 (see backend routes/register.js) ──
@@ -155,6 +160,38 @@ export default function RegisterPanel() {
       toast('Welcome back — your progress was restored.', 'info')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Reconcile with server truth once Landing's session check resolves ──
+  // localStorage is what makes resuming instant, but it's only a cache — it
+  // can be missing (cleared, different browser tab) even though the auth
+  // cookie from Step 1 is still valid. When the server reports more progress
+  // than this tab knows about, trust it: jump the wizard to the real step
+  // (carrying over the real profile fields) or, if registration is already
+  // complete, stop showing the wizard at all.
+  useEffect(() => {
+    if (!session) return
+    if (session.currentStep >= 4) {
+      setAlreadyComplete(true)
+      return
+    }
+    if (session.currentStep > step) {
+      setTab('register')
+      setStep(session.currentStep)
+      persistDraft({
+        ...draft,
+        surname: session.surname,
+        firstName: session.firstName,
+        emailAddress: session.emailAddress,
+        whatsAppNumber: session.whatsAppNumber,
+        docType: session.logistics?.docType || draft.docType,
+        roomPreference: session.logistics?.roomPreference || draft.roomPreference,
+        roommateName: session.logistics?.roommateName || draft.roommateName,
+        emergencyContact: session.logistics?.emergencyContact || draft.emergencyContact,
+        step: session.currentStep,
+      })
+      toast('Welcome back — your progress was restored.', 'info')
+    }
+  }, [session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (step !== 3) return
@@ -391,6 +428,23 @@ export default function RegisterPanel() {
           </div>
 
           <div className="bg-forest-mid rounded-2xl p-8 md:p-10 border border-white/5">
+            {alreadyComplete ? (
+              <div className="flex flex-col items-center text-center gap-4 py-6">
+                <div className="w-14 h-14 rounded-full bg-forest flex items-center justify-center text-2xl">✅</div>
+                <h3 className="font-display text-xl font-semibold text-cream">You're already registered!</h3>
+                <p className="text-cream-dark text-sm leading-relaxed opacity-80 max-w-xs">
+                  {session?.firstName ? `Good to see you again, ${session.firstName}. ` : ''}
+                  Your spot is confirmed — head to your dashboard to track payment and manage your details.
+                </p>
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className={`${primaryBtnClass} flex-none px-8`}
+                >
+                  Go to My Dashboard →
+                </button>
+              </div>
+            ) : (
+              <>
             <div className="flex gap-2 mb-8">
               <button
                 onClick={() => setTab('register')}
@@ -754,6 +808,8 @@ export default function RegisterPanel() {
                   {loginBusy ? 'Checking…' : 'Access Dashboard →'}
                 </button>
               </form>
+            )}
+              </>
             )}
           </div>
         </div>
