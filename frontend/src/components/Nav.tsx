@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logo from '../assets/images/logo.png'
+import { TRIP_DATES } from '../lib/constants'
 
 const SECTIONS = [
   { label: 'Home', id: 'top' },
@@ -36,6 +37,9 @@ export default function Nav() {
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <button onClick={() => goToSection('top')} className="flex items-center gap-2.5">
           <img src={logo} alt="AKWABA 001 logo" className="w-9 h-9 rounded-full object-cover" />
+          <span className="hidden sm:inline text-cream-dark text-xs font-semibold tracking-wide opacity-80">
+            {TRIP_DATES}
+          </span>
         </button>
 
         <div className="hidden md:flex gap-1">
@@ -72,6 +76,7 @@ export default function Nav() {
 
       {open && (
         <div className="md:hidden bg-ink border-t border-white/10 px-6 py-4 flex flex-col gap-3">
+          <span className="text-gold text-xs font-semibold tracking-wide uppercase">{TRIP_DATES}</span>
           {SECTIONS.map((s) => (
             <button key={s.id} onClick={() => goToSection(s.id)} className="text-left text-cream text-base font-medium py-1">
               {s.label}

@@ -1,3 +1,5 @@
+import { TRIP_DATES } from '../lib/constants'
+
 const HIGHLIGHTS = [
   {
     icon: '🧭',
@@ -22,7 +24,11 @@ export default function About() {
       <div className="max-w-6xl mx-auto px-6">
         <div className="grid gap-14 md:grid-cols-2 items-start">
           <div>
-            <p className="font-mono-custom text-xs text-gold tracking-widest uppercase mb-4">About The Trip</p>
+            <div className="flex items-center flex-wrap gap-3 mb-4">
+              <p className="font-mono-custom text-xs text-gold tracking-widest uppercase">About The Trip</p>
+              <span className="text-cream-dark text-xs opacity-40">·</span>
+              <span className="text-gold-light text-xs font-semibold tracking-wide">{TRIP_DATES}</span>
+            </div>
             <h2 className="font-display font-bold text-cream leading-tight tracking-tight mb-6 text-[clamp(30px,4.5vw,46px)]">
               12 People, One Circle
             </h2>

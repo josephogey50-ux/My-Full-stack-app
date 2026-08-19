@@ -13,6 +13,7 @@ import {
 import { useToast } from './Toast'
 import WhatsAppIcon from './WhatsAppIcon'
 import PaymentProgress from './PaymentProgress'
+import { TRIP_DATES } from '../lib/constants'
 
 const DRAFT_KEY = 'akwaba_registration_draft'
 
@@ -369,9 +370,14 @@ export default function RegisterPanel() {
         <div className="grid md:grid-cols-[0.85fr_1fr] gap-14 items-start">
           <div>
             <p className="font-mono-custom text-xs text-gold tracking-widest uppercase mb-4">Get Started</p>
-            <h2 className="font-display font-bold text-cream leading-tight tracking-tight mb-6 text-[clamp(30px,4.5vw,46px)]">
+            <h2 className="font-display font-bold text-cream leading-tight tracking-tight mb-4 text-[clamp(30px,4.5vw,46px)]">
               Register <span className="text-rust italic">Your Trip</span>
             </h2>
+            <div className="inline-flex items-center gap-2 bg-rust/10 border border-rust/30 px-3.5 py-1.5 rounded-full mb-6">
+              <span className="text-rust-light text-[13px] font-semibold tracking-wide uppercase">
+                🗓️ Trip Dates: {TRIP_DATES}
+              </span>
+            </div>
             <p className="text-cream-dark text-[16px] leading-relaxed opacity-80 mb-6">
               Already registered? Switch to the login tab to reach your dashboard, track your payment, and manage your
               details.

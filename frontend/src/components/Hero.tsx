@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import heroBanner from '../assets/images/hero-banner.jpg'
+import { TRIP_DATES } from '../lib/constants'
 
 const TAGLINES = [
   'Step beyond your borders. Travel is the education no classroom can offer — discover new cultures, forge real connections, and journey alongside people who share your hunger for the world.',
@@ -38,9 +39,14 @@ export default function Hero() {
 />
       
       <div className="relative max-w-6xl mx-auto px-6 pb-16 pt-32 w-full">
-        <div className="inline-flex items-center gap-2 bg-rust/90 px-3.5 py-1.5 rounded-full mb-6">
-          <span className="w-2 h-2 rounded-full bg-gold-light inline-block" style={{ animation: 'pulse-dot 2s infinite' }} />
-          <span className="text-cream text-[13px] font-semibold tracking-wide uppercase">Registration Open</span>
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          <div className="inline-flex items-center gap-2 bg-rust/90 px-3.5 py-1.5 rounded-full">
+            <span className="w-2 h-2 rounded-full bg-gold-light inline-block" style={{ animation: 'pulse-dot 2s infinite' }} />
+            <span className="text-cream text-[13px] font-semibold tracking-wide uppercase">Registration Open</span>
+          </div>
+          <div className="inline-flex items-center gap-2 bg-white/10 border border-cream/20 px-3.5 py-1.5 rounded-full">
+            <span className="text-cream text-[13px] font-semibold tracking-wide uppercase">{TRIP_DATES}</span>
+          </div>
         </div>
 
         <h1 className="font-display font-bold text-cream leading-[0.98] mb-6 max-w-3xl tracking-tight text-[clamp(38px,7vw,84px)]">
