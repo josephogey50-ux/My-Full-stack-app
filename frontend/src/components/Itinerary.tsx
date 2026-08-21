@@ -5,6 +5,13 @@ interface ScheduleStop {
   time?: string
   stop: string
   note?: string
+  cost?: 'free' | 'budget' | 'moderate'
+}
+
+const COST_STYLES: Record<NonNullable<ScheduleStop['cost']>, { label: string; className: string }> = {
+  free: { label: 'Free', className: 'text-emerald-400' },
+  budget: { label: 'Budget', className: 'text-gold' },
+  moderate: { label: 'Moderate', className: 'text-rust-light' },
 }
 
 interface ItineraryDay {
@@ -49,32 +56,46 @@ const DAYS: ItineraryDay[] = [
   },
   {
     day: 2,
-    date: 'Thu, Nov 26 — City Day',
-    location: 'Accra',
+    date: 'Thu, Nov 26 — City + Hills Day',
+    location: 'Accra & Akuapem Hills',
     countryCode: 'GH',
-    title: 'Accra: Heritage, Culture & Nightlife',
+    title: 'Accra & the Akuapem Hills: Heritage, Forts & Nightlife',
     description:
-      'A full day inside Accra — independence history, Jamestown, craft markets, and a sunset on Labadi Beach before the group picks a spot for the night.',
-    highlight: 'Jamestown — colonial lighthouse, boxing gyms & harbour. Hire a local guide at the lighthouse (~GHS 100–150 for the group).',
-    distanceKm: 'Citywide',
+      'Long day by design (05:30–21:00+). A dawn loop into the hills for Aburi and Oboadaka Falls — a different direction from Friday\'s coastal route, so it runs first, before city traffic. Back in Accra, Osu Castle and the Du Bois Centre anchor early afternoon since both have hard closing times, then the old-town history cluster, ending with an evening (not sunset) Labadi Beach and Osu nightlife.',
+    highlight: 'Osu Castle (Christiansborg) — former seat of government, guided tour + security check. Closes 16:30, so it\'s the one fixed deadline of the day.',
+    distanceKm: 'Citywide + hills',
     overnightStay: 'Accra',
     schedule: [
-      { time: '08:00', stop: 'Breakfast' },
-      { time: '09:00', stop: 'Kwame Nkrumah Memorial Park & Mausoleum', note: "Ghana's independence story; the museum is compact and excellent" },
-      { time: '10:30', stop: 'Independence Square / Black Star Gate', note: "Africa's third-largest public square. Group photo location." },
+      { time: '05:30', stop: 'Depart Accra', note: 'Early start for the hills' },
+      { time: '06:15', stop: 'Aburi Botanical Gardens', note: '160-acre gardens, opened 1890', cost: 'budget' },
+      { time: '07:45', stop: 'Oboadaka Falls', note: 'Short walk in from parking; no vehicle access to the falls', cost: 'budget' },
+      { time: '09:00', stop: 'Drive back to Accra' },
+      { time: '11:00', stop: 'Breakfast / brunch' },
+      { time: '11:30', stop: 'Kwame Nkrumah Memorial Park & Mausoleum', note: "Ghana's independence story; compact, excellent museum", cost: 'budget' },
+      { time: '12:30', stop: 'Independence Square / Black Star Gate', note: "Africa's third-largest public square", cost: 'free' },
+      { time: '13:00', stop: 'Osu Castle (Christiansborg)', note: 'Guided tour + security check. Closes 16:30 — a fixed deadline.', cost: 'moderate' },
+      { time: '14:15', stop: 'W.E.B. Du Bois Centre', note: 'His house + resting place, guided. Closes 16:00 Mon–Fri.', cost: 'budget' },
+      { time: '15:00', stop: 'Lunch — chop bar', note: 'Quick bite before heading to the old town' },
       {
-        time: '11:30',
-        stop: 'Jamestown',
-        note: "Colonial lighthouse, boxing gyms, harbour, street murals. Hire a local guide at the lighthouse — ~GHS 100–150 for the group. Don't wander it unguided.",
+        time: '15:45',
+        stop: 'Arts Centre (Centre for National Culture)',
+        note: 'Kente, carvings, beads, drums. Bargain hard — start at 40% of ask. Go before vendors wind down.',
+        cost: 'free',
       },
-      { time: '13:30', stop: 'Lunch — chop bar' },
-      { time: '15:00', stop: 'Arts Centre (Centre for National Culture)', note: 'Kente, carvings, beads, drums. Bargain hard — opening prices assume tourists. Start at 40% of ask.' },
-      { time: '17:00', stop: 'Labadi Beach', note: 'Sunset, drumming, horse rides. Small entry fee.' },
+      { time: '16:30', stop: 'Ussher Fort and Museum', note: 'Former colonial fort/prison, slave-trade history. Right by Jamestown.', cost: 'budget' },
+      {
+        time: '17:10',
+        stop: 'Jamestown',
+        note: "Colonial lighthouse, boxing gyms, harbour, street murals. Hire a local guide — ~GHS 100–150 for the group. Don't wander it unguided. Keep it tight, light is fading.",
+        cost: 'free',
+      },
+      { time: '18:20', stop: 'Labadi Beach', note: 'Evening visit — drumming, horse rides. Sunset window mostly gone by this point.', cost: 'budget' },
       { time: '19:30', stop: 'Dinner, Osu (Oxford Street)' },
       {
         time: '21:00',
-        stop: 'Nightlife — pick one',
+        stop: 'Osu Night Market + nightlife',
         note: 'Sandbox Beach Club (dance/beachside), +233 Jazz Bar & Grill (live music, relaxed), Bloombar (Wednesday live drumming)',
+        cost: 'free',
       },
     ],
   },
@@ -85,7 +106,7 @@ const DAYS: ItineraryDay[] = [
     countryCode: 'GH',
     title: 'Central Region: Rainforest & The Castles',
     description:
-      '~165 km west of Accra — the heaviest and best day of the trip. An early 05:30 departure beats Accra traffic and the Kakum school-group crush before the day moves into Cape Coast Castle.',
+      '~165 km west of Accra — the heaviest and best day of the trip. An early 05:30 departure beats Accra traffic and the Kakum school-group crush. Kakum and Cape Coast Castle stay together since they sit on the same road; Hans Cottage, Fort William, and the Arts Market balance the day with free/budget stops within minutes of the castle.',
     highlight: 'Kakum National Park Canopy Walkway — 7 suspension bridges, 350m long, up to 40m above the rainforest floor.',
     distanceKm: 165,
     overnightStay: 'Cape Coast / Elmina',
@@ -96,10 +117,17 @@ const DAYS: ItineraryDay[] = [
         time: '09:00',
         stop: 'Kakum National Park — Canopy Walkway',
         note: '7 suspension bridges, 350m long, up to 40m above the rainforest floor. Mandatory certified ranger guide. Steep 30-minute hike up — brief anyone with knee or heart issues.',
+        cost: 'moderate',
       },
-      { time: '11:30', stop: 'Hans Cottage Botel', note: 'Lunch on a deck over a live crocodile pond. 10 min from Kakum, on the way back to Cape Coast.' },
-      { time: '13:30', stop: 'Cape Coast Castle (UNESCO World Heritage)', note: 'Guided tour of the dungeons and the Door of No Return.' },
-      { time: '16:00', stop: 'Cape Coast Arts Market / town walk', note: 'Decompression time — deliberately scheduled' },
+      { time: '11:30', stop: 'Hans Cottage Botel', note: 'Lunch on a deck over a live crocodile pond. 10 min from Kakum, on the way back to Cape Coast.', cost: 'free' },
+      { time: '13:30', stop: 'Cape Coast Castle (UNESCO World Heritage)', note: 'Guided tour of the dungeons and the Door of No Return.', cost: 'moderate' },
+      {
+        time: '15:30',
+        stop: 'Fort William Lighthouse',
+        note: 'Exterior, cannons, panoramic views over Cape Coast town and harbour. A few blocks from the castle.',
+        cost: 'budget',
+      },
+      { time: '16:15', stop: 'Cape Coast Arts Market / town walk', note: 'Decompression time — deliberately scheduled', cost: 'free' },
       { time: '18:00', stop: 'Check in Cape Coast or Elmina, dinner', note: 'Fresh grilled tilapia on the coast' },
     ],
   },
@@ -110,17 +138,27 @@ const DAYS: ItineraryDay[] = [
     countryCode: 'GH → NG',
     title: 'Elmina, Beach, and the Road Home',
     description:
-      '~165 km back to Accra, then the overnight coach to Lagos. The morning stays on the coast — Elmina Castle, the fishing harbour, and a beach stop — before the final shopping run and departure.',
-    highlight: "Elmina Castle (St. George's) — built 1482, the oldest surviving European building in sub-Saharan Africa.",
+      "~165 km back to Accra, then the overnight coach to Lagos. Elmina Castle is dropped from this plan (same fort experience as Cape Coast, the day before) — Fort Coenraadsburg fills that gap for a fraction of the cost, right above the harbour, before the fishing harbour, a beach stop, and the final shopping run.",
+    highlight: 'Fort Coenraadsburg (Fort St. Jago) — hilltop fort with sweeping views over Elmina and the harbour, at a fraction of the castle entrance fees.',
     distanceKm: 165,
     overnightStay: 'Overnight coach → Lagos',
     schedule: [
       { time: '07:00', stop: 'Breakfast, check out' },
-      { time: '08:00', stop: "Elmina Castle (St. George's)", note: 'Built 1482 — the oldest surviving European building in sub-Saharan Africa. Smaller and rawer than Cape Coast.' },
-      { time: '09:30', stop: 'Elmina fishing harbour', note: 'Hundreds of painted canoes. One of the most photogenic scenes in Ghana.' },
-      { time: '10:30', stop: 'Brenu Akyinim Beach (~25 min west)', note: 'Clean, wide, uncrowded stretch. Swim, eat, decompress.' },
+      {
+        time: '08:00',
+        stop: 'Fort Coenraadsburg (Fort St. Jago)',
+        note: 'Hilltop fort overlooking Elmina and the harbour — good morning light. Far cheaper than the castles.',
+        cost: 'budget',
+      },
+      { time: '09:00', stop: 'Elmina fishing harbour', note: 'Hundreds of painted canoes. One of the most photogenic scenes in Ghana.', cost: 'free' },
+      { time: '10:00', stop: 'Brenu Akyinim Beach (~25 min west)', note: 'Clean, wide, uncrowded stretch. Swim, eat, decompress.', cost: 'free' },
       { time: '13:00', stop: 'Lunch at the beach, then depart for Accra' },
-      { time: '17:00', stop: 'Accra — final shopping (Accra Mall or Makola) + dinner', note: 'Buy shea butter, kente, black soap, Ghanaian chocolate' },
+      {
+        time: '17:00',
+        stop: 'Accra — final shopping (Accra Mall or Makola) + dinner',
+        note: 'Buy shea butter, kente, black soap, Ghanaian chocolate',
+        cost: 'free',
+      },
       { time: '20:00', stop: 'Board overnight coach to Lagos', note: 'Return booking confirmed on Day 2 — never left to Day 4' },
     ],
   },
@@ -202,7 +240,14 @@ export default function Itinerary() {
                       <span className="font-mono-custom text-xs text-gold shrink-0 w-[74px] pt-0.5">{s.time}</span>
                     )}
                     <div>
-                      <div className="text-cream text-sm font-semibold">{s.stop}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-cream text-sm font-semibold">{s.stop}</span>
+                        {s.cost && (
+                          <span className={`font-mono-custom text-[10px] uppercase tracking-widest ${COST_STYLES[s.cost].className}`}>
+                            {COST_STYLES[s.cost].label}
+                          </span>
+                        )}
+                      </div>
                       {s.note && <div className="text-cream-dark text-xs leading-relaxed opacity-65 mt-0.5">{s.note}</div>}
                     </div>
                   </div>
