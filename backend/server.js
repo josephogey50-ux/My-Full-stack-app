@@ -39,10 +39,45 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
   logger.warn('GMAIL_USER/GMAIL_APP_PASSWORD not set — forgot-PIN emails will fail until configured.');
 }
 
+// ── Production config sanity checks ──
+// Catches the specific "half-configured for prod" state this app has shipped
+// in before: NODE_ENV flipped to production while ALLOWED_ORIGINS/
+// PAYMENT_CALLBACK_URL were still pointed at localhost (cookies/CORS/Paystack
+// redirects would silently break for real users), or a live Paystack secret
+// key loaded while NODE_ENV is anything other than production (real money
+// moving through a dev/staging deploy).
+if (process.env.NODE_ENV === 'production') {
+  const localhostPattern = /localhost|127\.0\.0\.1/i;
+  if (localhostPattern.test(process.env.ALLOWED_ORIGINS || '')) {
+    logger.fatal('NODE_ENV=production but ALLOWED_ORIGINS still points at localhost. Set it to the real deployed frontend origin(s).');
+    process.exit(1);
+  }
+  if (localhostPattern.test(process.env.PAYMENT_CALLBACK_URL || '')) {
+    logger.fatal('NODE_ENV=production but PAYMENT_CALLBACK_URL still points at localhost. Paystack redirects would strand real users.');
+    process.exit(1);
+  }
+  if ((process.env.PAYSTACK_SECRET_KEY || '').startsWith('sk_test_')) {
+    logger.fatal('NODE_ENV=production but PAYSTACK_SECRET_KEY is a test key (sk_test_...). Swap in the live secret key before accepting real payments.');
+    process.exit(1);
+  }
+} else if ((process.env.PAYSTACK_SECRET_KEY || '').startsWith('sk_live_')) {
+  // Warn, don't exit: a developer may legitimately want to hit live Paystack
+  // once from a local/staging run, but it's worth surfacing loudly.
+  logger.warn(`NODE_ENV=${process.env.NODE_ENV} but PAYSTACK_SECRET_KEY is a LIVE key. Real money can move from this non-production run.`);
+}
+
 // App assembly itself lives in app.js, kept import-safe (no process.exit,
 // no Mongo connect) so tests can build one against an in-memory database
-// without going through any of this file's process-level setup.
-const app = createApp();
+// without going through any of this file's process-level setup. createApp()
+// throws (rather than exiting) on fatal config problems it detects itself —
+// this is the one place that decides the process should actually die for it.
+let app;
+try {
+  app = createApp();
+} catch (err) {
+  logger.fatal({ err }, 'Failed to assemble the Express app');
+  process.exit(1);
+}
 
 // MongoDB Connection + Server Start
 let server;

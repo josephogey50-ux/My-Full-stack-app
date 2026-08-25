@@ -25,11 +25,20 @@ function Seat({ status }: { status: keyof typeof STATUS_STYLE }) {
 export default function Convoy() {
   const [data, setData] = useState<ConvoyStatus | null>(null)
   const [error, setError] = useState(false)
+  // The backend (Render free/starter tier) spins down after inactivity, so a
+  // visitor's very first request of the day can take 20-30s to come back
+  // while the instance wakes up. Every request after that is instant. Rather
+  // than let "Loading convoy…" sit there indefinitely looking broken, this
+  // swaps in an explanation once it's clearly not a normal fast load.
+  const [slowLoad, setSlowLoad] = useState(false)
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
+      const slowTimer = setTimeout(() => {
+        if (!cancelled) setSlowLoad(true)
+      }, 4000)
       try {
         const result = await getConvoyStatus()
         if (!cancelled) {
@@ -38,6 +47,9 @@ export default function Convoy() {
         }
       } catch {
         if (!cancelled) setError(true)
+      } finally {
+        clearTimeout(slowTimer)
+        if (!cancelled) setSlowLoad(false)
       }
     }
 
@@ -126,7 +138,11 @@ export default function Convoy() {
             </>
           )}
 
-          {!error && !data && <p className="text-center text-ink-mid text-sm opacity-60 py-10">Loading convoy…</p>}
+          {!error && !data && (
+            <p className="text-center text-ink-mid text-sm opacity-60 py-10">
+              {slowLoad ? "Waking up the server — this can take up to 30 seconds if no one's visited recently." : 'Loading convoy…'}
+            </p>
+          )}
         </div>
 
         <p className="text-center text-ink-mid text-xs opacity-60 mt-6">

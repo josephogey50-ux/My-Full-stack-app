@@ -31,9 +31,10 @@ src/
   (Profile → Logistics → Checkout) matching `routes/register.js`.
 - Real WhatsApp contact number, document types, and the two real pricing
   plans (Full Payment ₦385,000 / Installment ₦100,000 deposit) — **not** the
-  placeholder itinerary/pricing content from the Figma mockup. Payment is via
-  Paystack or manual bank transfer (details shared over WhatsApp, not shown
-  on-site).
+  placeholder itinerary/pricing content from the Figma mockup. All payments
+  go through Paystack (card, bank transfer, or USSD) — there is no manual/
+  off-platform bank transfer option; every payment is server-side verified
+  against Paystack before a participant's balance is credited.
 - The rotating hero taglines from the current site.
 - Local draft autosave for in-progress registrations (so a refresh doesn't
   lose progress).
@@ -89,11 +90,14 @@ calls already exists.
 
 ## Admin access note
 
-`/admin` uses the same shared `x-admin-key` secret the backend already
-expects (`ADMIN_API_KEY`). The key is kept in `sessionStorage` only (cleared
-when the tab closes) and is never written to `localStorage` or logged. This
-mirrors the backend's existing "shared secret for a small number of
-organizers" design — if the organizer list grows, the backend's
-`requireAdmin` middleware (in `middleware/auth.js`) is the place to swap in
-real per-user accounts, and this panel already calls the API the same way a
-future login form would.
+`/admin` logs in via `POST /api/admin/login`, exchanging the shared
+`ADMIN_API_KEY` secret (plus a display name) for a short-lived (12h) httpOnly
+session cookie — the raw key itself only ever touches the browser for that
+one request, never stored client-side afterward. Every subsequent admin
+request reuses that session cookie, the same double-submit CSRF pattern as
+participant auth, and the display name entered at login is attached to every
+payment change in the audit log (`GET /api/admin/audit-log`), so "who changed
+this" has an answer even though every organizer still shares one secret. If
+the organizer list grows, the backend's `requireAdmin`/`verifyAdminSecret`
+(in `middleware/auth.js`) is the place to swap in real per-user accounts —
+this panel already calls the API the same way a future login form would.

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   adminAuditLog,
@@ -255,8 +255,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </button>
         </form>
 
-        <div className="bg-white rounded-xl border border-ink/10 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-ink/10 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-cream-dark text-ink-mid text-left">
               <tr>
                 <th className="px-4 py-3 font-semibold">Name</th>
@@ -398,8 +398,8 @@ function ActivityLog() {
 
   return (
     <div>
-      <div className="bg-white rounded-xl border border-ink/10 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl border border-ink/10 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-cream-dark text-ink-mid text-left">
             <tr>
               <th className="px-4 py-3 font-semibold">When</th>
@@ -490,6 +490,46 @@ function RegistrantDrawer({
   const [amountPaid, setAmountPaid] = useState(String(registrant.amountPaid || 0))
   const [busy, setBusy] = useState(false)
   const [receiptLoading, setReceiptLoading] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  // Focus trap + Escape-to-close + scroll lock + focus restoration, so the
+  // drawer behaves like a real modal dialog for keyboard/screen-reader users
+  // instead of just visually overlaying the page.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeButtonRef.current?.focus()
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+      previouslyFocused?.focus()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
     setBusy(true)
@@ -521,11 +561,18 @@ function RegistrantDrawer({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex justify-end z-50" onClick={onClose}>
-      <div className="bg-white w-full max-w-md h-full p-8 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="text-ink-mid text-sm mb-6">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="registrant-drawer-title"
+        className="bg-white w-full max-w-md h-full p-8 overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button ref={closeButtonRef} onClick={onClose} className="text-ink-mid text-sm mb-6">
           ✕ Close
         </button>
-        <h2 className="font-display text-xl font-bold text-ink mb-1">
+        <h2 id="registrant-drawer-title" className="font-display text-xl font-bold text-ink mb-1">
           {registrant.firstName} {registrant.surname}
         </h2>
         <p className="text-ink-mid text-sm mb-6">{registrant.emailAddress}</p>

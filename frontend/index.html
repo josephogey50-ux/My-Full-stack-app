@@ -13,20 +13,24 @@
       WhatsApp is this app's primary distribution channel, so without these
       tags a shared link renders as a bare URL with no image/title.
       og:image and og:url must be absolute per spec (crawlers fetch them
-      independently, not relative to the page) — swap in the real production
-      frontend domain once it's known; localhost is a harmless placeholder
-      until then since crawlers only ever fetch the deployed URL.
+      independently, not relative to the page).
+
+      DOMAIN NOTE: www.nigerianpassporttravels.com is the real production
+      frontend domain (confirmed via the backend's ALLOWED_ORIGINS/
+      PAYMENT_CALLBACK_URL env vars). If it ever changes, update this URL,
+      the canonical link below, robots.txt, and sitemap.xml to match.
     -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="AKWABA 001" />
     <meta property="og:title" content="AKWABA 001 — Nigerian Passport Travels" />
     <meta property="og:description" content="A road-trip convoy through Nigeria, Benin, Togo, and Ghana. Register your spot and pay securely with Paystack." />
-    <meta property="og:image" content="https://akwaba001.example.com/og-image.jpg" />
-    <meta property="og:url" content="https://akwaba001.example.com/" />
+    <meta property="og:image" content="https://www.nigerianpassporttravels.com/og-image.jpg" />
+    <meta property="og:url" content="https://www.nigerianpassporttravels.com/" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AKWABA 001 — Nigerian Passport Travels" />
     <meta name="twitter:description" content="A road-trip convoy through Nigeria, Benin, Togo, and Ghana. Register your spot and pay securely with Paystack." />
-    <meta name="twitter:image" content="https://akwaba001.example.com/og-image.jpg" />
+    <meta name="twitter:image" content="https://www.nigerianpassporttravels.com/og-image.jpg" />
+    <link rel="canonical" href="https://www.nigerianpassporttravels.com/" />
     <!--
       Content-Security-Policy: blunts XSS by restricting what the page can
       load/execute. connect-src is scoped to this app's own backend (the

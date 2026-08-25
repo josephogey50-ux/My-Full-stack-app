@@ -559,6 +559,8 @@ export default function RegisterPanel({ session }: { session?: ParticipantProfil
                         <button
                           type="button"
                           onClick={() => setPinVisible((v) => !v)}
+                          aria-label={pinVisible ? 'Hide PIN' : 'Show PIN'}
+                          aria-pressed={pinVisible}
                           className="px-3 rounded-lg bg-white/5 text-cream-dark text-xs font-bold shrink-0"
                         >
                           {pinVisible ? 'HIDE' : 'PEEP'}
@@ -766,6 +768,8 @@ export default function RegisterPanel({ session }: { session?: ParticipantProfil
                     <button
                       type="button"
                       onClick={() => setLoginPinVisible((v) => !v)}
+                      aria-label={loginPinVisible ? 'Hide PIN' : 'Show PIN'}
+                      aria-pressed={loginPinVisible}
                       className="px-3 rounded-lg bg-white/5 text-cream-dark text-xs font-bold shrink-0"
                     >
                       {loginPinVisible ? 'HIDE' : 'PEEP'}
@@ -870,6 +874,8 @@ function PinConfirmField({
         <button
           type="button"
           onClick={() => setPinVisible((v) => !v)}
+          aria-label={pinVisible ? 'Hide PIN' : 'Show PIN'}
+          aria-pressed={pinVisible}
           className="px-3 rounded-lg bg-white/5 text-cream-dark text-xs font-bold shrink-0"
         >
           {pinVisible ? 'HIDE' : 'PEEP'}

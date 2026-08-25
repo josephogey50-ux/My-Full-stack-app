@@ -7,6 +7,7 @@ import { requireAdmin, verifyAdminSecret } from '../middleware/auth.js';
 import { generateCsrfToken, requireCsrf } from '../middleware/csrf.js';
 import { ADMIN_COOKIE, CSRF_COOKIE, authCookieOptions, csrfCookieOptions, clearCookieOptions } from '../utils/cookies.js';
 import { oneOf, isNonEmptyString, buildSafeSearchRegex, MAX_SEARCH_QUERY_LENGTH, safeContentDisposition } from '../utils/validators.js';
+import { TRIP_TOTAL_NAIRA } from '../utils/utils_payments.js';
 
 const router = express.Router();
 
@@ -234,6 +235,32 @@ router.get('/registrants/:email/receipt', async (req, res) => {
   }
 });
 
+// ─── Payment status/amount business invariants ───
+// The frontend isn't the security boundary here — an admin request can send
+// any paymentStatus/amountPaid combination, so the backend has to be the one
+// place these can't drift apart (e.g. "Paid" at ₦50,000, or ₦1,000,000 on a
+// ₦385,000 trip). Evaluated against the RESULTING record (existing values
+// merged with whichever field(s) this request actually changes), since a
+// request that only touches one field must still leave the other consistent.
+function validatePaymentInvariants(paymentStatus, amountPaid) {
+  if (amountPaid > TRIP_TOTAL_NAIRA) {
+    return `amountPaid cannot exceed the trip total (₦${TRIP_TOTAL_NAIRA.toLocaleString()}).`;
+  }
+  if (paymentStatus === 'Pending' && amountPaid !== 0) {
+    return 'A "Pending" payment must have amountPaid = 0.';
+  }
+  if (paymentStatus === 'Partial' && !(amountPaid > 0 && amountPaid < TRIP_TOTAL_NAIRA)) {
+    return `A "Partial" payment must have 0 < amountPaid < ₦${TRIP_TOTAL_NAIRA.toLocaleString()}.`;
+  }
+  if (paymentStatus === 'Paid' && amountPaid !== TRIP_TOTAL_NAIRA) {
+    return `A "Paid" payment must have amountPaid = ₦${TRIP_TOTAL_NAIRA.toLocaleString()} (the full trip total).`;
+  }
+  // 'Refunded' is deliberately left unconstrained beyond the cap above — it
+  // can legitimately land anywhere from 0 (fully refunded) up to just under
+  // the total (partial refund).
+  return null;
+}
+
 // ─── Organizer confirms/updates a payment ───
 router.patch('/registrants/:email/payment', requireCsrf, async (req, res) => {
   try {
@@ -249,6 +276,13 @@ router.patch('/registrants/:email/payment', requireCsrf, async (req, res) => {
     const targetEmail = req.params.email.toLowerCase().trim();
     const before = await Participant.findOne({ emailAddress: targetEmail });
     if (!before) return res.status(404).json({ error: 'Registrant not found.' });
+
+    const resultingStatus = paymentStatus !== undefined ? paymentStatus : (before.checkout?.paymentStatus || 'Pending');
+    const resultingAmount = amountPaid !== undefined ? Number(amountPaid) : (before.checkout?.amountPaid || 0);
+    const invariantError = validatePaymentInvariants(resultingStatus, resultingAmount);
+    if (invariantError) {
+      return res.status(400).json({ error: invariantError });
+    }
 
     const update = {};
     if (paymentStatus !== undefined) update['checkout.paymentStatus'] = paymentStatus;

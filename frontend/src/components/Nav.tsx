@@ -94,13 +94,19 @@ export default function Nav({ session }: { session?: ParticipantProfile | null }
           )}
         </div>
 
-        <button onClick={() => setOpen(!open)} className="md:hidden text-cream text-2xl leading-none">
+        <button
+          onClick={() => setOpen(!open)}
+          className="md:hidden text-cream text-2xl leading-none"
+          aria-expanded={open}
+          aria-controls="mobile-nav-menu"
+          aria-label={open ? 'Close menu' : 'Open menu'}
+        >
           {open ? '✕' : '☰'}
         </button>
       </div>
 
       {open && (
-        <div className="md:hidden bg-ink border-t border-white/10 px-6 py-4 flex flex-col gap-3">
+        <div id="mobile-nav-menu" className="md:hidden bg-ink border-t border-white/10 px-6 py-4 flex flex-col gap-3">
           <span className="text-gold text-xs font-semibold tracking-wide uppercase">{TRIP_DATES}</span>
           {registrationInProgress && (
             <span className="text-gold text-xs font-semibold tracking-wide uppercase">

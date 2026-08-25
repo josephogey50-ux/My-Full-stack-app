@@ -49,8 +49,11 @@ export function createApp() {
     .filter(Boolean);
 
   if (allowedOrigins.length === 0) {
-    logger.fatal('ALLOWED_ORIGINS resolved to zero valid origins after parsing. Refusing to start with an open CORS policy.');
-    process.exit(1);
+    // No process.exit() here: this module is import-safe on purpose (see the
+    // comment above createApp) so tests can build an app without triggering
+    // process-level side effects. server.js is the only caller that should
+    // ever decide the process should die — it catches this and exits.
+    throw new Error('ALLOWED_ORIGINS resolved to zero valid origins after parsing. Refusing to start with an open CORS policy.');
   }
 
   app.use(cors({

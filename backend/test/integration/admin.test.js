@@ -123,4 +123,69 @@ describe('PATCH /api/admin/registrants/:email/payment', () => {
     expect(auditRes.body.entries[0].adminName).toBe('Root Admin');
     expect(auditRes.body.entries[0].targetEmail).toBe('jane@example.com');
   });
+
+  // Regression coverage: the frontend isn't the security boundary — an admin
+  // request used to be able to set paymentStatus/amountPaid to any
+  // non-negative combination, e.g. "Paid" at ₦50,000 or ₦1,000,000 on a
+  // ₦385,000 trip. These lock in the invariants that closed that gap.
+  describe('business invariants', () => {
+    async function patchPayment(cookie, csrfToken, body) {
+      return request(app)
+        .patch('/api/admin/registrants/jane@example.com/payment')
+        .set('Cookie', cookie)
+        .set('x-csrf-token', csrfToken)
+        .send(body);
+    }
+
+    it('rejects amountPaid greater than the trip total', async () => {
+      await registerParticipant();
+      const { cookie, csrfToken } = await adminLogin();
+      const res = await patchPayment(cookie, csrfToken, { amountPaid: 1000000 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/exceed/i);
+    });
+
+    it('rejects "Paid" with less than the full trip total', async () => {
+      await registerParticipant();
+      const { cookie, csrfToken } = await adminLogin();
+      const res = await patchPayment(cookie, csrfToken, { paymentStatus: 'Paid', amountPaid: 50000 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Paid/);
+    });
+
+    it('rejects "Partial" with amountPaid at or above the trip total', async () => {
+      await registerParticipant();
+      const { cookie, csrfToken } = await adminLogin();
+      const res = await patchPayment(cookie, csrfToken, { paymentStatus: 'Partial', amountPaid: 385000 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Partial/);
+    });
+
+    it('rejects "Pending" with a nonzero amountPaid', async () => {
+      await registerParticipant();
+      const { cookie, csrfToken } = await adminLogin();
+      const res = await patchPayment(cookie, csrfToken, { paymentStatus: 'Pending', amountPaid: 1 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Pending/);
+    });
+
+    it('rejects updating just amountPaid above the total when an existing status was already "Paid"', async () => {
+      await registerParticipant();
+      const { cookie, csrfToken } = await adminLogin();
+      await patchPayment(cookie, csrfToken, { paymentStatus: 'Paid', amountPaid: 385000 });
+      // Only amountPaid sent this time — the existing "Paid" status must still
+      // be validated against the new (invalid) resulting amount.
+      const res = await patchPayment(cookie, csrfToken, { amountPaid: 500000 });
+      expect(res.status).toBe(400);
+    });
+
+    it('allows a partial refund below the current amountPaid', async () => {
+      await registerParticipant();
+      const { cookie, csrfToken } = await adminLogin();
+      await patchPayment(cookie, csrfToken, { paymentStatus: 'Paid', amountPaid: 385000 });
+      const res = await patchPayment(cookie, csrfToken, { paymentStatus: 'Refunded', amountPaid: 100000 });
+      expect(res.status).toBe(200);
+      expect(res.body.registrant.paymentStatus).toBe('Refunded');
+    });
+  });
 });

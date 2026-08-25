@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { startTestEnv, stopTestEnv, clearDb, extractCookies } from '../helpers/testEnv.js';
 import Participant from '../../model/Participant.js';
 
@@ -196,6 +197,24 @@ describe('GET /api/participant/me', () => {
     const res = await request(app).get('/api/participant/me').set('Cookie', cookie);
     expect(res.status).toBe(200);
     expect(res.body.participant.emailAddress).toBe('jane@example.com');
+  });
+
+  // Regression coverage: requireParticipantAuth pins jwt.verify to HS256
+  // specifically. A token whose header claims 'none' (no signature at all)
+  // must never be accepted just because it decodes.
+  it('rejects a token signed with algorithm "none"', async () => {
+    const forged = jwt.sign({ email: 'jane@example.com' }, '', { algorithm: 'none' });
+    const res = await request(app).get('/api/participant/me').set('Cookie', `akwaba_token=${forged}`);
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects an expired token', async () => {
+    const expired = jwt.sign({ email: 'jane@example.com' }, process.env.JWT_SECRET, {
+      algorithm: 'HS256',
+      expiresIn: -10
+    });
+    const res = await request(app).get('/api/participant/me').set('Cookie', `akwaba_token=${expired}`);
+    expect(res.status).toBe(401);
   });
 });
 
