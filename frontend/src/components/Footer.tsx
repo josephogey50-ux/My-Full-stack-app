@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import WhatsAppIcon from './WhatsAppIcon'
+import instagramLogo from '../assets/images/instagram logo.png'
 
 export default function Footer() {
   return (
@@ -9,6 +10,14 @@ export default function Footer() {
           Questions? Call or WhatsApp us:{' '}
           <a href="https://wa.me/2348064749255" target="_blank" rel="noopener" aria-label="Chat with us on WhatsApp">
             <WhatsAppIcon className="w-6 h-6" />
+          </a>
+          <a
+            href="https://www.instagram.com/nigerian_passport_travels/"
+            target="_blank"
+            rel="noopener"
+            aria-label="Follow us on Instagram"
+          >
+            <img src={instagramLogo} alt="" className="w-6 h-6 rounded" />
           </a>
         </p>
         <div className="flex items-center gap-4">
