@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import Participant from '../model/Participant.js';
 import { requireParticipantAuth } from '../middleware/auth.js';
 import { requireCsrf } from '../middleware/csrf.js';
+import logger from '../utils/logger.js';
 import {
   TRIP_TOTAL_NAIRA,
   MIN_INITIAL_DEPOSIT_NGN,
@@ -129,6 +130,7 @@ router.post('/initiate', requireParticipantAuth, requireCsrf, initiateLimiter, a
       throw paystackError;
     }
   } catch (error) {
+    logger.error({ err: error, participantEmail: req.participantEmail }, 'Failed to initiate payment');
     const isDev = process.env.NODE_ENV !== 'production';
     res.status(502).json({ error: 'Could not start payment.', ...(isDev && { details: error.message }) });
   }
@@ -174,6 +176,7 @@ router.post('/verify/:reference', requireParticipantAuth, requireCsrf, async (re
     const finalDoc = updated || (await Participant.findOne({ emailAddress: req.participantEmail }));
     res.status(200).json({ success: true, participant: summarizeForSelf(finalDoc) });
   } catch (error) {
+    logger.error({ err: error, participantEmail: req.participantEmail, reference: req.params.reference }, 'Failed to verify payment');
     const isDev = process.env.NODE_ENV !== 'production';
     res.status(502).json({ error: 'Could not verify payment.', ...(isDev && { details: error.message }) });
   }
@@ -227,6 +230,7 @@ router.post('/resync', requireParticipantAuth, requireCsrf, resyncLimiter, async
     const finalDoc = await Participant.findOne({ emailAddress: req.participantEmail });
     res.status(200).json({ success: true, confirmedCount, participant: summarizeForSelf(finalDoc) });
   } catch (error) {
+    logger.error({ err: error, participantEmail: req.participantEmail }, 'Failed to resync payment status');
     const isDev = process.env.NODE_ENV !== 'production';
     res.status(502).json({ error: 'Could not check payment status.', ...(isDev && { details: error.message }) });
   }

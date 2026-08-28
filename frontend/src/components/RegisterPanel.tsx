@@ -170,8 +170,12 @@ export default function RegisterPanel({ session }: { session?: ParticipantProfil
   // complete, stop showing the wizard at all.
   useEffect(() => {
     if (!session) return
+    // `session` arrives asynchronously (Landing's own getMyProfile() call),
+    // not on every render — this is reacting to that one-time data arrival,
+    // not deriving state from a prop available at render time, so there's no
+    // render-body equivalent to move this into.
     if (session.currentStep >= 4) {
-      setAlreadyComplete(true)
+      setAlreadyComplete(true) // eslint-disable-line react-hooks/set-state-in-effect
       return
     }
     if (session.currentStep > step) {

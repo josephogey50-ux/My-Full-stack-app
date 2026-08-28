@@ -157,8 +157,16 @@ export default function Dashboard() {
   // actively re-checking with Paystack rather than just re-reading the DB —
   // so a webhook that silently failed still gets corrected automatically.
   const hasOutstandingBalance = (profile?.checkout?.remainingBalance ?? 0) > 0
+  // Deliberately a ref, not state: syncPendingPayments() (below) needs the
+  // amount paid *before* a sync, even when invoked from the 45s interval's
+  // stale closure — the ref always reads the current value at call time.
+  // No React Compiler in this project, so this cross-effect ref pattern is
+  // safe (no auto-memoization to invalidate); it's just outside what the
+  // stricter eslint-plugin-react-hooks v7 rules can statically verify.
   const amountPaidRef = useRef(0)
-  amountPaidRef.current = profile?.checkout?.amountPaid ?? 0
+  useEffect(() => {
+    amountPaidRef.current = profile?.checkout?.amountPaid ?? 0 // eslint-disable-line react-hooks/immutability
+  }, [profile])
   useEffect(() => {
     if (!hasOutstandingBalance) return
     const interval = setInterval(() => {

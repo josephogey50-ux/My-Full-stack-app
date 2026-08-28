@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import itineraryBg from '../assets/images/itinerary-bg.jpg.png'
+import itineraryBg from '../assets/images/itinerary-bg.jpg'
 
 interface ScheduleStop {
   time?: string
