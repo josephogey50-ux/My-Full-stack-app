@@ -584,6 +584,7 @@ function RegistrantDrawer({
           <Row label="Room Preference" value={registrant.roomPreference === 'paired' ? 'Paired' : 'Solo (matched)'} />
           {registrant.roommateName && <Row label="Roommate" value={registrant.roommateName} />}
           <Row label="Plan" value={registrant.plan || '—'} />
+          <Row label="Trip Total" value={`₦${Number(registrant.tripTotal || 0).toLocaleString()}`} />
         </div>
 
         {registrant.hasReceipt && (

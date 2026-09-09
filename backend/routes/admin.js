@@ -7,7 +7,7 @@ import { requireAdmin, verifyAdminSecret } from '../middleware/auth.js';
 import { generateCsrfToken, requireCsrf } from '../middleware/csrf.js';
 import { ADMIN_COOKIE, CSRF_COOKIE, authCookieOptions, csrfCookieOptions, clearCookieOptions } from '../utils/cookies.js';
 import { oneOf, isNonEmptyString, buildSafeSearchRegex, MAX_SEARCH_QUERY_LENGTH, safeContentDisposition } from '../utils/validators.js';
-import { TRIP_TOTAL_NAIRA } from '../utils/utils_payments.js';
+import { tripTotalForRoomPreference } from '../utils/utils_payments.js';
 
 const router = express.Router();
 
@@ -74,6 +74,7 @@ function summarize(p) {
     plan: p.checkout?.plan,
     paymentStatus: p.checkout?.paymentStatus,
     amountPaid: p.checkout?.amountPaid,
+    tripTotal: tripTotalForRoomPreference(p.logistics?.roomPreference),
     hasReceipt: !!p.checkout?.receipt?.contentType,
     registeredAt: p.createdAt
   };
@@ -159,7 +160,7 @@ const CSV_EXPORT_MAX_ROWS = 5000;
 const CSV_COLUMNS = [
   'firstName', 'surname', 'emailAddress', 'whatsAppNumber', 'currentStep',
   'docType', 'roomPreference', 'roommateName', 'plan', 'paymentStatus',
-  'amountPaid', 'hasReceipt', 'registeredAt'
+  'amountPaid', 'tripTotal', 'hasReceipt', 'registeredAt'
 ];
 
 function csvEscape(value) {
@@ -238,22 +239,25 @@ router.get('/registrants/:email/receipt', async (req, res) => {
 // ─── Payment status/amount business invariants ───
 // The frontend isn't the security boundary here — an admin request can send
 // any paymentStatus/amountPaid combination, so the backend has to be the one
-// place these can't drift apart (e.g. "Paid" at ₦50,000, or ₦1,000,000 on a
-// ₦385,000 trip). Evaluated against the RESULTING record (existing values
-// merged with whichever field(s) this request actually changes), since a
-// request that only touches one field must still leave the other consistent.
-function validatePaymentInvariants(paymentStatus, amountPaid) {
-  if (amountPaid > TRIP_TOTAL_NAIRA) {
-    return `amountPaid cannot exceed the trip total (₦${TRIP_TOTAL_NAIRA.toLocaleString()}).`;
+// place these can't drift apart (e.g. "Paid" at ₦50,000 on a registrant whose
+// own trip total is higher). Evaluated against the RESULTING record (existing
+// values merged with whichever field(s) this request actually changes), since
+// a request that only touches one field must still leave the other
+// consistent. The trip total itself depends on this registrant's room
+// preference (single vs. paired/couple) — see tripTotalForRoomPreference().
+function validatePaymentInvariants(paymentStatus, amountPaid, roomPreference) {
+  const tripTotal = tripTotalForRoomPreference(roomPreference);
+  if (amountPaid > tripTotal) {
+    return `amountPaid cannot exceed this registrant's trip total (₦${tripTotal.toLocaleString()}).`;
   }
   if (paymentStatus === 'Pending' && amountPaid !== 0) {
     return 'A "Pending" payment must have amountPaid = 0.';
   }
-  if (paymentStatus === 'Partial' && !(amountPaid > 0 && amountPaid < TRIP_TOTAL_NAIRA)) {
-    return `A "Partial" payment must have 0 < amountPaid < ₦${TRIP_TOTAL_NAIRA.toLocaleString()}.`;
+  if (paymentStatus === 'Partial' && !(amountPaid > 0 && amountPaid < tripTotal)) {
+    return `A "Partial" payment must have 0 < amountPaid < ₦${tripTotal.toLocaleString()}.`;
   }
-  if (paymentStatus === 'Paid' && amountPaid !== TRIP_TOTAL_NAIRA) {
-    return `A "Paid" payment must have amountPaid = ₦${TRIP_TOTAL_NAIRA.toLocaleString()} (the full trip total).`;
+  if (paymentStatus === 'Paid' && amountPaid !== tripTotal) {
+    return `A "Paid" payment must have amountPaid = ₦${tripTotal.toLocaleString()} (this registrant's full trip total).`;
   }
   // 'Refunded' is deliberately left unconstrained beyond the cap above — it
   // can legitimately land anywhere from 0 (fully refunded) up to just under
@@ -279,7 +283,7 @@ router.patch('/registrants/:email/payment', requireCsrf, async (req, res) => {
 
     const resultingStatus = paymentStatus !== undefined ? paymentStatus : (before.checkout?.paymentStatus || 'Pending');
     const resultingAmount = amountPaid !== undefined ? Number(amountPaid) : (before.checkout?.amountPaid || 0);
-    const invariantError = validatePaymentInvariants(resultingStatus, resultingAmount);
+    const invariantError = validatePaymentInvariants(resultingStatus, resultingAmount, before.logistics?.roomPreference);
     if (invariantError) {
       return res.status(400).json({ error: invariantError });
     }

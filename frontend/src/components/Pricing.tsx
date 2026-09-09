@@ -9,17 +9,18 @@ const INCLUSIONS = [
 
 const PLANS = [
   {
-    name: 'Full Payment',
-    price: '₦385,000',
-    desc: 'Pay the full trip cost up front — one transfer, nothing else to track.',
-    featured: true,
+    name: 'Single',
+    price: '₦425,000',
+    suffix: 'per person',
+    desc: 'Traveling solo — you\'ll be matched with a same-sex roommate.',
+    featured: false,
   },
   {
-    name: 'Installment Plan',
-    price: '₦100,000',
-    suffix: 'min. deposit',
-    desc: 'Secure your spot with a deposit, then clear the balance from your dashboard before departure.',
-    featured: false,
+    name: 'Couple',
+    price: '₦385,000',
+    suffix: 'per couple (₦192,500 each)',
+    desc: 'Traveling with a designated partner and sharing a room — the better-value option.',
+    featured: true,
   },
 ]
 
@@ -29,10 +30,11 @@ export default function Pricing() {
       <div className="max-w-6xl mx-auto px-6">
         <p className="font-mono-custom text-xs text-rust tracking-widest uppercase mb-4 text-center">Packages</p>
         <h2 className="font-display font-bold text-ink leading-tight tracking-tight mb-4 text-center text-[clamp(30px,4.5vw,46px)]">
-          Choose Your Plan
+          Choose Your Package
         </h2>
         <p className="text-ink-mid text-[16px] text-center max-w-lg mx-auto mb-14 opacity-75">
-          Pay in full, or spread the cost with an installment plan. Both are managed from your dashboard.
+          Traveling solo or with a partner — pay in full, or spread the cost with an installment plan (min. ₦100,000
+          deposit). Both are managed from your dashboard.
         </p>
 
         <div className="grid gap-6 md:grid-cols-2 max-w-3xl mx-auto">
@@ -57,7 +59,7 @@ export default function Pricing() {
                 onClick={() => document.getElementById('register')?.scrollIntoView({ behavior: 'smooth' })}
                 className="w-full py-3.5 rounded-full text-sm font-bold transition bg-rust hover:bg-rust-dark text-cream"
               >
-                Select This Plan →
+                Select {plan.name} →
               </button>
             </div>
           ))}
@@ -65,7 +67,7 @@ export default function Pricing() {
 
         <div className="max-w-3xl mx-auto mt-10 bg-ink rounded-2xl p-8">
           <div className="font-mono-custom text-xs text-gold uppercase tracking-widest mb-5 text-center">
-            Every Plan Includes
+            Every Package Includes
           </div>
           <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
             {INCLUSIONS.map((item) => (

@@ -250,6 +250,7 @@ export interface RegistrantSummary {
   plan?: string
   paymentStatus?: string
   amountPaid?: number
+  tripTotal?: number
   hasReceipt?: boolean
   registeredAt?: string
 }

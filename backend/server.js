@@ -11,25 +11,29 @@ import logger from './utils/logger.js';
 
 dotenv.config();
 
-// utils/utils_payments.js computed TRIP_TOTAL_NAIRA / MIN_INITIAL_DEPOSIT_NGN
-// from process.env the moment it was first imported above — but ES module
-// imports are hoisted, so that happened before this file's own dotenv.config()
-// call ran, meaning those two would be NaN in local dev (where env values only
-// live in .env, not the OS environment) if left alone. initPaymentConfig()
-// recomputes them now that dotenv.config() has actually run; every place that
-// reads TRIP_TOTAL_NAIRA/MIN_INITIAL_DEPOSIT_NGN does so via a live module
+// utils/utils_payments.js computed SINGLE_TRIP_TOTAL_NAIRA / COUPLE_TRIP_TOTAL_NAIRA /
+// MIN_INITIAL_DEPOSIT_NGN from process.env the moment it was first imported
+// above — but ES module imports are hoisted, so that happened before this
+// file's own dotenv.config() call ran, meaning those would be NaN in local
+// dev (where env values only live in .env, not the OS environment) if left
+// alone. initPaymentConfig() recomputes them now that dotenv.config() has
+// actually run; every place that reads them does so via a live module
 // binding, so this refresh is visible everywhere without re-importing anything.
 initPaymentConfig();
 
 // ── Fail loudly on missing secrets/config rather than silently running incorrectly ──
-['MONGO_URI', 'JWT_SECRET', 'ADMIN_API_KEY', 'ALLOWED_ORIGINS', 'PAYSTACK_SECRET_KEY', 'PAYMENT_CALLBACK_URL', 'TRIP_TOTAL_AMOUNT_NGN'].forEach((key) => {
+['MONGO_URI', 'JWT_SECRET', 'ADMIN_API_KEY', 'ALLOWED_ORIGINS', 'PAYSTACK_SECRET_KEY', 'PAYMENT_CALLBACK_URL', 'SINGLE_TRIP_TOTAL_AMOUNT_NGN', 'COUPLE_TRIP_TOTAL_AMOUNT_NGN'].forEach((key) => {
   if (!process.env[key]) {
     logger.fatal(`Missing required environment variable: ${key}`);
     process.exit(1);
   }
 });
-if (!Number.isFinite(Number(process.env.TRIP_TOTAL_AMOUNT_NGN)) || Number(process.env.TRIP_TOTAL_AMOUNT_NGN) <= 0) {
-  logger.fatal('TRIP_TOTAL_AMOUNT_NGN must be a positive number.');
+if (!Number.isFinite(Number(process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN)) || Number(process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN) <= 0) {
+  logger.fatal('SINGLE_TRIP_TOTAL_AMOUNT_NGN must be a positive number.');
+  process.exit(1);
+}
+if (!Number.isFinite(Number(process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN)) || Number(process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN) <= 0) {
+  logger.fatal('COUPLE_TRIP_TOTAL_AMOUNT_NGN must be a positive number.');
   process.exit(1);
 }
 

@@ -4,8 +4,12 @@ import logger from './logger.js';
 
 // ─── Trip cost config ───
 // Single source of truth for how much the trip costs. Read once at module
-// load; server.js's required-env check (see below) guarantees this is a
-// valid positive number before the app ever starts accepting traffic.
+// load; server.js's required-env check (see below) guarantees these are
+// valid positive numbers before the app ever starts accepting traffic.
+// Two tiers: a solo traveler (room "matched" with a same-sex roommate) pays
+// SINGLE_TRIP_TOTAL_NAIRA each; a "paired" couple pays COUPLE_TRIP_TOTAL_NAIRA
+// *combined*, split evenly since each partner still registers and pays as
+// their own Participant record — see tripTotalForRoomPreference() below.
 // ── Live bindings, not one-shot constants ──
 // ES module `import` statements are hoisted: every statically-imported
 // module (this one included, via routes/register.js and routes/payments.js)
@@ -15,17 +19,16 @@ import logger from './logger.js';
 // as plain `const`s (they'd lock in as NaN in local dev, where env vars only
 // live in .env). Exporting them as `let` and recomputing in
 // initPaymentConfig() — called from server.js immediately after
-// dotenv.config() — works because `import { TRIP_TOTAL_NAIRA }` is a live
-// reference to this module's binding: every function below that reads it
-// picks up the refreshed value at call time, not at import time.
-export let TRIP_TOTAL_NAIRA = Number(process.env.TRIP_TOTAL_AMOUNT_NGN);
-export let MIN_INITIAL_DEPOSIT_NGN = computeMinDeposit();
+// dotenv.config() — works because `import { SINGLE_TRIP_TOTAL_NAIRA }` is a
+// live reference to this module's binding: every function below that reads
+// it picks up the refreshed value at call time, not at import time.
+export let SINGLE_TRIP_TOTAL_NAIRA = Number(process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN);
+export let COUPLE_TRIP_TOTAL_NAIRA = Number(process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN);
+export let MIN_INITIAL_DEPOSIT_NGN = computeMinDepositFloor();
 
-function computeMinDeposit() {
+function computeMinDepositFloor() {
   const raw = Number(process.env.MIN_INITIAL_DEPOSIT_NGN);
-  const floor = Number.isFinite(raw) && raw > 0 ? raw : 100000;
-  // Never allowed to exceed the trip total itself, so cheaper trips still work.
-  return Math.min(floor, TRIP_TOTAL_NAIRA);
+  return Number.isFinite(raw) && raw > 0 ? raw : 100000;
 }
 
 // Call once from server.js, right after dotenv.config() runs, so these
@@ -33,8 +36,21 @@ function computeMinDeposit() {
 // above. A no-op in production platforms (Render, etc.) that inject env
 // vars directly into process.env before the process even starts.
 export function initPaymentConfig() {
-  TRIP_TOTAL_NAIRA = Number(process.env.TRIP_TOTAL_AMOUNT_NGN);
-  MIN_INITIAL_DEPOSIT_NGN = computeMinDeposit();
+  SINGLE_TRIP_TOTAL_NAIRA = Number(process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN);
+  COUPLE_TRIP_TOTAL_NAIRA = Number(process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN);
+  MIN_INITIAL_DEPOSIT_NGN = computeMinDepositFloor();
+}
+
+// A "paired" registrant owes half of the couple total; everyone else
+// (including the schema default, 'match') owes the single total.
+export function tripTotalForRoomPreference(roomPreference) {
+  return roomPreference === 'paired' ? COUPLE_TRIP_TOTAL_NAIRA / 2 : SINGLE_TRIP_TOTAL_NAIRA;
+}
+
+// Never allowed to exceed the participant's own trip total, so the cheaper
+// (couple, per-person) tier still works.
+export function minDepositForRoomPreference(roomPreference) {
+  return Math.min(MIN_INITIAL_DEPOSIT_NGN, tripTotalForRoomPreference(roomPreference));
 }
 
 export function nairaToKobo(naira) {
@@ -100,6 +116,13 @@ export async function paystackVerifyTransaction(reference) {
 // matches nothing and silently no-ops instead of double-crediting the
 // participant's balance.
 export async function applyConfirmedPayment({ reference, amountNaira, channel }) {
+  // Captured as plain numbers before the pipeline runs — Mongo evaluates
+  // this per-document against each participant's own logistics.roomPreference,
+  // so a solo and a paired registrant are compared against different totals
+  // in the same $cond even though it's built from these two constants.
+  const singleTotal = SINGLE_TRIP_TOTAL_NAIRA;
+  const couplePerPersonTotal = COUPLE_TRIP_TOTAL_NAIRA / 2;
+
   const updated = await Participant.findOneAndUpdate(
     {
       'checkout.payments': { $elemMatch: { reference, status: 'pending' } }
@@ -131,7 +154,16 @@ export async function applyConfirmedPayment({ reference, amountNaira, channel })
       {
         $set: {
           'checkout.paymentStatus': {
-            $cond: [{ $gte: ['$checkout.amountPaid', TRIP_TOTAL_NAIRA] }, 'Paid', 'Partial']
+            $cond: [
+              {
+                $gte: [
+                  '$checkout.amountPaid',
+                  { $cond: [{ $eq: ['$logistics.roomPreference', 'paired'] }, couplePerPersonTotal, singleTotal] }
+                ]
+              },
+              'Paid',
+              'Partial'
+            ]
           }
         }
       }
@@ -154,12 +186,13 @@ export async function applyConfirmedPayment({ reference, amountNaira, channel })
     // already been credited, so this is deliberately fire-and-forget from
     // the caller's perspective (webhook already responded 200; the client
     // verify/resync response doesn't depend on this either).
-    const remaining = Math.max(0, Math.round((TRIP_TOTAL_NAIRA - (updated.checkout?.amountPaid || 0)) * 100) / 100);
+    const tripTotal = tripTotalForRoomPreference(updated.logistics?.roomPreference);
+    const remaining = Math.max(0, Math.round((tripTotal - (updated.checkout?.amountPaid || 0)) * 100) / 100);
     sendPaymentConfirmationEmail(updated.emailAddress, {
       firstName: updated.firstName,
       amountPaid: amountNaira,
       amountTotalPaid: updated.checkout?.amountPaid || 0,
-      tripTotal: TRIP_TOTAL_NAIRA,
+      tripTotal,
       remainingBalance: remaining
     }).catch((err) => {
       logger.error({ err, emailAddress: updated.emailAddress, reference }, 'Failed to send payment confirmation email');

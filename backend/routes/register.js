@@ -20,7 +20,7 @@ import {
   safeContentDisposition,
   normalizePhone
 } from '../utils/validators.js';
-import { TRIP_TOTAL_NAIRA, MIN_INITIAL_DEPOSIT_NGN } from '../utils/utils_payments.js';
+import { tripTotalForRoomPreference, minDepositForRoomPreference } from '../utils/utils_payments.js';
 
 const router = express.Router();
 
@@ -40,7 +40,8 @@ function setAuthCookies(res, token, csrfToken) {
 
 function publicParticipant(p) {
   const amountPaid = p.checkout?.amountPaid || 0;
-  const remainingBalance = Math.max(0, Math.round((TRIP_TOTAL_NAIRA - amountPaid) * 100) / 100);
+  const tripTotal = tripTotalForRoomPreference(p.logistics?.roomPreference);
+  const remainingBalance = Math.max(0, Math.round((tripTotal - amountPaid) * 100) / 100);
   return {
     surname: p.surname,
     firstName: p.firstName,
@@ -52,11 +53,11 @@ function publicParticipant(p) {
       plan: p.checkout?.plan,
       paymentStatus: p.checkout?.paymentStatus,
       amountPaid,
-      tripTotal: TRIP_TOTAL_NAIRA,
+      tripTotal,
       remainingBalance,
       // Mirrors the rule enforced server-side in /api/payments/initiate —
       // only relevant before any payment has landed. See utils_payments.js.
-      minNextPayment: amountPaid <= 0 ? Math.min(MIN_INITIAL_DEPOSIT_NGN, remainingBalance) : 100,
+      minNextPayment: amountPaid <= 0 ? Math.min(minDepositForRoomPreference(p.logistics?.roomPreference), remainingBalance) : 100,
       hasReceipt: !!p.checkout?.receipt?.contentType,
       receiptUploadedAt: p.checkout?.receipt?.uploadedAt || null
     }
@@ -267,8 +268,9 @@ router.post('/register/step', registrationStepLimiter, async (req, res) => {
 
       const amountPaid = Number(participant.checkout?.amountPaid || 0);
       if (amountPaid <= 0) {
+        const minDeposit = minDepositForRoomPreference(participant.logistics?.roomPreference);
         return res.status(400).json({
-          error: `Please pay the initial deposit (min. ₦${MIN_INITIAL_DEPOSIT_NGN.toLocaleString()}) before completing registration.`
+          error: `Please pay the initial deposit (min. ₦${minDeposit.toLocaleString()}) before completing registration.`
         });
       }
 

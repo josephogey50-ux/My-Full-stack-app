@@ -405,6 +405,15 @@ export default function RegisterPanel({ session }: { session?: ParticipantProfil
     pending: 'bg-transparent text-cream-dark/60 border-cream-dark/30',
   }
 
+  // Prefer the server's own tripTotal (authoritative, reflects the room
+  // preference saved in Step 2) once it's loaded; fall back to a
+  // room-preference-based estimate so the label isn't blank while loading.
+  const fullPaymentLabel = depositProfile?.checkout?.tripTotal
+    ? `₦${depositProfile.checkout.tripTotal.toLocaleString()}`
+    : draft.roomPreference === 'paired'
+      ? '₦192,500 (per person)'
+      : '₦425,000'
+
   return (
     <section id="register" className="bg-ink py-20 md:py-24">
       <div className="max-w-5xl mx-auto px-6">
@@ -668,8 +677,12 @@ export default function RegisterPanel({ session }: { session?: ParticipantProfil
                     <div className="text-cream text-sm font-semibold mb-1">💳 Payment Plan</div>
                     <Field label="Select Plan">
                       <select value={draft.plan} onChange={(e) => updateField('plan', e.target.value)} className={inputClass}>
-                        <option value="Full Payment">Full Payment — ₦385,000</option>
-                        <option value="Installment Plan">Installment — Min. deposit ₦100,000</option>
+                        <option value="Full Payment">
+                          Full Payment — {fullPaymentLabel}
+                        </option>
+                        <option value="Installment Plan">
+                          Installment — Min. deposit ₦{(depositProfile?.checkout?.minNextPayment ?? 100000).toLocaleString()}
+                        </option>
                       </select>
                     </Field>
 

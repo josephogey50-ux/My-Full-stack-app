@@ -19,7 +19,8 @@ export async function startTestEnv() {
   process.env.ALLOWED_ORIGINS = 'http://localhost:5173';
   process.env.PAYSTACK_SECRET_KEY = 'sk_test_dummy';
   process.env.PAYMENT_CALLBACK_URL = 'http://localhost:5173/dashboard';
-  process.env.TRIP_TOTAL_AMOUNT_NGN = '385000';
+  process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
+  process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '300000';
   process.env.MIN_INITIAL_DEPOSIT_NGN = '100000';
   process.env.NODE_ENV = 'test';
 

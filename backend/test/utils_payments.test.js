@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { nairaToKobo, koboToNaira, initPaymentConfig } from '../utils/utils_payments.js';
-// TRIP_TOTAL_NAIRA / MIN_INITIAL_DEPOSIT_NGN are re-imported after each
-// initPaymentConfig() call below because they're live module bindings (see
-// the comment at the top of utils_payments.js) — reading them via a fresh
-// namespace import keeps this test in sync with the current value rather
-// than a snapshot taken at module-load time.
+// SINGLE_TRIP_TOTAL_NAIRA / COUPLE_TRIP_TOTAL_NAIRA / MIN_INITIAL_DEPOSIT_NGN
+// are re-imported after each initPaymentConfig() call below because they're
+// live module bindings (see the comment at the top of utils_payments.js) —
+// reading them via a fresh namespace import keeps this test in sync with the
+// current value rather than a snapshot taken at module-load time.
 import * as payments from '../utils/utils_payments.js';
 
 describe('nairaToKobo / koboToNaira', () => {
@@ -19,38 +19,76 @@ describe('nairaToKobo / koboToNaira', () => {
 });
 
 describe('initPaymentConfig / MIN_INITIAL_DEPOSIT_NGN', () => {
-  const originalTotal = process.env.TRIP_TOTAL_AMOUNT_NGN;
+  const originalSingle = process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN;
+  const originalCouple = process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN;
   const originalMinDeposit = process.env.MIN_INITIAL_DEPOSIT_NGN;
 
   function restoreEnv() {
-    process.env.TRIP_TOTAL_AMOUNT_NGN = originalTotal;
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = originalSingle;
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = originalCouple;
     process.env.MIN_INITIAL_DEPOSIT_NGN = originalMinDeposit;
     initPaymentConfig();
   }
 
-  it('recomputes TRIP_TOTAL_NAIRA from the current env var', () => {
-    process.env.TRIP_TOTAL_AMOUNT_NGN = '385000';
+  it('recomputes SINGLE_TRIP_TOTAL_NAIRA / COUPLE_TRIP_TOTAL_NAIRA from the current env vars', () => {
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
     delete process.env.MIN_INITIAL_DEPOSIT_NGN;
     initPaymentConfig();
-    expect(payments.TRIP_TOTAL_NAIRA).toBe(385000);
+    expect(payments.SINGLE_TRIP_TOTAL_NAIRA).toBe(425000);
+    expect(payments.COUPLE_TRIP_TOTAL_NAIRA).toBe(385000);
     restoreEnv();
   });
 
   it('defaults MIN_INITIAL_DEPOSIT_NGN to 100000 when unset', () => {
-    process.env.TRIP_TOTAL_AMOUNT_NGN = '385000';
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
     delete process.env.MIN_INITIAL_DEPOSIT_NGN;
     initPaymentConfig();
     expect(payments.MIN_INITIAL_DEPOSIT_NGN).toBe(100000);
     restoreEnv();
   });
+});
 
-  it('caps MIN_INITIAL_DEPOSIT_NGN at the trip total for a cheaper trip', () => {
-    // Guards against a real footgun: an organizer setting a trip total below
-    // the 100k default deposit would otherwise make the minimum unpayable.
-    process.env.TRIP_TOTAL_AMOUNT_NGN = '385000';
+describe('tripTotalForRoomPreference / minDepositForRoomPreference', () => {
+  const originalSingle = process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN;
+  const originalCouple = process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN;
+  const originalMinDeposit = process.env.MIN_INITIAL_DEPOSIT_NGN;
+
+  function restoreEnv() {
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = originalSingle;
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = originalCouple;
+    process.env.MIN_INITIAL_DEPOSIT_NGN = originalMinDeposit;
+    initPaymentConfig();
+  }
+
+  it('charges the single total for "match" (and unset/default) room preference', () => {
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
+    initPaymentConfig();
+    expect(payments.tripTotalForRoomPreference('match')).toBe(425000);
+    expect(payments.tripTotalForRoomPreference(undefined)).toBe(425000);
+    restoreEnv();
+  });
+
+  it('charges half the couple total for "paired" room preference', () => {
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
+    initPaymentConfig();
+    expect(payments.tripTotalForRoomPreference('paired')).toBe(192500);
+    restoreEnv();
+  });
+
+  it('caps the minimum deposit at the cheaper (couple, per-person) trip total', () => {
+    // Guards against a real footgun: an organizer setting a couple total
+    // below double the 100k default deposit would otherwise make the
+    // per-person minimum unpayable.
+    process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '150000'; // 75000/person
     delete process.env.MIN_INITIAL_DEPOSIT_NGN;
     initPaymentConfig();
-    expect(payments.MIN_INITIAL_DEPOSIT_NGN).toBe(100000);
+    expect(payments.minDepositForRoomPreference('paired')).toBe(75000);
+    expect(payments.minDepositForRoomPreference('match')).toBe(100000);
     restoreEnv();
   });
 });

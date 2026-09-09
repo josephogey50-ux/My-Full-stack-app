@@ -6,8 +6,8 @@ import { requireParticipantAuth } from '../middleware/auth.js';
 import { requireCsrf } from '../middleware/csrf.js';
 import logger from '../utils/logger.js';
 import {
-  TRIP_TOTAL_NAIRA,
-  MIN_INITIAL_DEPOSIT_NGN,
+  tripTotalForRoomPreference,
+  minDepositForRoomPreference,
   paystackInitializeTransaction,
   paystackVerifyTransaction,
   applyConfirmedPayment,
@@ -42,7 +42,8 @@ const resyncLimiter = rateLimit({
 
 function remainingBalance(participant) {
   const paid = Number(participant.checkout?.amountPaid || 0);
-  return Math.max(0, Math.round((TRIP_TOTAL_NAIRA - paid) * 100) / 100);
+  const tripTotal = tripTotalForRoomPreference(participant.logistics?.roomPreference);
+  return Math.max(0, Math.round((tripTotal - paid) * 100) / 100);
 }
 
 // ─── 1. Initiate a payment ───
@@ -75,7 +76,7 @@ router.post('/initiate', requireParticipantAuth, requireCsrf, initiateLimiter, a
     // near-fully-paid account (e.g. organizer manually logged a partial
     // payment just under the total) can still pay off the small remainder.
     const isFirstPayment = Number(participant.checkout?.amountPaid || 0) <= 0;
-    const requiredMinimum = Math.min(MIN_INITIAL_DEPOSIT_NGN, remaining);
+    const requiredMinimum = Math.min(minDepositForRoomPreference(participant.logistics?.roomPreference), remaining);
     if (isFirstPayment && amount < requiredMinimum) {
       return res.status(400).json({
         error: `Your first payment must be at least ₦${requiredMinimum.toLocaleString()}.`
@@ -247,11 +248,11 @@ function summarizeForSelf(participant) {
     plan: participant.checkout?.plan,
     paymentStatus: participant.checkout?.paymentStatus,
     amountPaid,
-    tripTotal: TRIP_TOTAL_NAIRA,
+    tripTotal: tripTotalForRoomPreference(participant.logistics?.roomPreference),
     remainingBalance: remaining,
     // Only relevant while nothing has been paid yet — frontend uses this to
     // set the minimum on the "amount to pay" field and explain the rule.
-    minNextPayment: amountPaid <= 0 ? Math.min(MIN_INITIAL_DEPOSIT_NGN, remaining) : 100
+    minNextPayment: amountPaid <= 0 ? Math.min(minDepositForRoomPreference(participant.logistics?.roomPreference), remaining) : 100
   };
 }
 
