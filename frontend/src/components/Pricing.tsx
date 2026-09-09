@@ -12,6 +12,7 @@ const PLANS = [
     name: 'Single',
     price: '₦425,000',
     suffix: 'per person',
+    deposit: '₦150,000',
     desc: 'Traveling solo — you\'ll be matched with a same-sex roommate.',
     featured: false,
   },
@@ -19,6 +20,7 @@ const PLANS = [
     name: 'Couple',
     price: '₦385,000',
     suffix: 'per person',
+    deposit: '₦200,000',
     desc: 'Traveling with a designated partner and sharing a room — the better-value option.',
     featured: true,
   },
@@ -33,8 +35,8 @@ export default function Pricing() {
           Choose Your Package
         </h2>
         <p className="text-ink-mid text-[16px] text-center max-w-lg mx-auto mb-14 opacity-75">
-          Traveling solo or with a partner — pay in full, or spread the cost with an installment plan (min. ₦150,000
-          deposit for Single, ₦200,000 for Couple). Both are managed from your dashboard.
+          Traveling solo or with a partner — pay in full, or spread the cost with an installment plan. Both are
+          managed from your dashboard.
         </p>
 
         <div className="grid gap-6 md:grid-cols-2 max-w-3xl mx-auto">
@@ -54,7 +56,11 @@ export default function Pricing() {
               <div className="font-display text-4xl font-bold text-cream mb-1">{plan.price}</div>
               {plan.suffix && <div className="text-cream-dark text-sm mb-4 opacity-70">{plan.suffix}</div>}
               {!plan.suffix && <div className="mb-4" />}
-              <p className="text-cream-dark text-sm leading-relaxed mb-7 opacity-85">{plan.desc}</p>
+              <p className="text-cream-dark text-sm leading-relaxed mb-4 opacity-85">{plan.desc}</p>
+              <div className="flex items-baseline gap-2 mb-7">
+                <span className="text-cream-dark text-xs uppercase tracking-wide opacity-60">Min. deposit</span>
+                <span className="text-cream text-lg font-bold">{plan.deposit}</span>
+              </div>
               <button
                 onClick={() => document.getElementById('register')?.scrollIntoView({ behavior: 'smooth' })}
                 className="w-full py-3.5 rounded-full text-sm font-bold transition bg-rust hover:bg-rust-dark text-cream"
