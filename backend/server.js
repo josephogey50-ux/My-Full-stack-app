@@ -12,8 +12,8 @@ import logger from './utils/logger.js';
 dotenv.config();
 
 // utils/utils_payments.js computed SINGLE_TRIP_TOTAL_NAIRA / COUPLE_TRIP_TOTAL_NAIRA /
-// MIN_INITIAL_DEPOSIT_NGN from process.env the moment it was first imported
-// above — but ES module imports are hoisted, so that happened before this
+// SINGLE_MIN_DEPOSIT_NGN / COUPLE_MIN_DEPOSIT_NGN from process.env the moment
+// it was first imported above — but ES module imports are hoisted, so that happened before this
 // file's own dotenv.config() call ran, meaning those would be NaN in local
 // dev (where env values only live in .env, not the OS environment) if left
 // alone. initPaymentConfig() recomputes them now that dotenv.config() has

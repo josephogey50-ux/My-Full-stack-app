@@ -33,8 +33,8 @@ export default function Pricing() {
           Choose Your Package
         </h2>
         <p className="text-ink-mid text-[16px] text-center max-w-lg mx-auto mb-14 opacity-75">
-          Traveling solo or with a partner — pay in full, or spread the cost with an installment plan (min. ₦100,000
-          deposit). Both are managed from your dashboard.
+          Traveling solo or with a partner — pay in full, or spread the cost with an installment plan (min. ₦150,000
+          deposit for Single, ₦200,000 for Couple). Both are managed from your dashboard.
         </p>
 
         <div className="grid gap-6 md:grid-cols-2 max-w-3xl mx-auto">

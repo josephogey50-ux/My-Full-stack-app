@@ -21,7 +21,12 @@ export async function startTestEnv() {
   process.env.PAYMENT_CALLBACK_URL = 'http://localhost:5173/dashboard';
   process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
   process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '300000';
-  process.env.MIN_INITIAL_DEPOSIT_NGN = '100000';
+  // Kept at 100000 (rather than this app's real 150000/200000 minimums) so
+  // existing integration tests that pay a 100000 deposit for a default
+  // (single-tier) participant keep exercising the "meets the minimum" path
+  // without every one of them needing to change alongside the real minimums.
+  process.env.SINGLE_MIN_INITIAL_DEPOSIT_NGN = '100000';
+  process.env.COUPLE_MIN_INITIAL_DEPOSIT_NGN = '100000';
   process.env.NODE_ENV = 'test';
 
   initPaymentConfig();

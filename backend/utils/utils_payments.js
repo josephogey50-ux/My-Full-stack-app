@@ -25,11 +25,15 @@ import logger from './logger.js';
 // it picks up the refreshed value at call time, not at import time.
 export let SINGLE_TRIP_TOTAL_NAIRA = Number(process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN);
 export let COUPLE_TRIP_TOTAL_NAIRA = Number(process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN);
-export let MIN_INITIAL_DEPOSIT_NGN = computeMinDepositFloor();
+// Minimum first-payment floor, also tiered by room preference — a couple's
+// higher deposit reflects the two-person commitment even though each
+// partner is still billed (and pays) individually.
+export let SINGLE_MIN_DEPOSIT_NGN = computeMinDepositFloor(process.env.SINGLE_MIN_INITIAL_DEPOSIT_NGN, 150000);
+export let COUPLE_MIN_DEPOSIT_NGN = computeMinDepositFloor(process.env.COUPLE_MIN_INITIAL_DEPOSIT_NGN, 200000);
 
-function computeMinDepositFloor() {
-  const raw = Number(process.env.MIN_INITIAL_DEPOSIT_NGN);
-  return Number.isFinite(raw) && raw > 0 ? raw : 100000;
+function computeMinDepositFloor(envValue, fallback) {
+  const raw = Number(envValue);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
 }
 
 // Call once from server.js, right after dotenv.config() runs, so these
@@ -39,7 +43,8 @@ function computeMinDepositFloor() {
 export function initPaymentConfig() {
   SINGLE_TRIP_TOTAL_NAIRA = Number(process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN);
   COUPLE_TRIP_TOTAL_NAIRA = Number(process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN);
-  MIN_INITIAL_DEPOSIT_NGN = computeMinDepositFloor();
+  SINGLE_MIN_DEPOSIT_NGN = computeMinDepositFloor(process.env.SINGLE_MIN_INITIAL_DEPOSIT_NGN, 150000);
+  COUPLE_MIN_DEPOSIT_NGN = computeMinDepositFloor(process.env.COUPLE_MIN_INITIAL_DEPOSIT_NGN, 200000);
 }
 
 // A "paired" registrant owes the couple (per-person) total; everyone else
@@ -51,7 +56,8 @@ export function tripTotalForRoomPreference(roomPreference) {
 // Never allowed to exceed the participant's own trip total, so the cheaper
 // tier still works.
 export function minDepositForRoomPreference(roomPreference) {
-  return Math.min(MIN_INITIAL_DEPOSIT_NGN, tripTotalForRoomPreference(roomPreference));
+  const floor = roomPreference === 'paired' ? COUPLE_MIN_DEPOSIT_NGN : SINGLE_MIN_DEPOSIT_NGN;
+  return Math.min(floor, tripTotalForRoomPreference(roomPreference));
 }
 
 export function nairaToKobo(naira) {
