@@ -411,7 +411,7 @@ export default function RegisterPanel({ session }: { session?: ParticipantProfil
   const fullPaymentLabel = depositProfile?.checkout?.tripTotal
     ? `₦${depositProfile.checkout.tripTotal.toLocaleString()}`
     : draft.roomPreference === 'paired'
-      ? '₦192,500 (per person)'
+      ? '₦385,000'
       : '₦425,000'
 
   return (

@@ -71,20 +71,19 @@ describe('tripTotalForRoomPreference / minDepositForRoomPreference', () => {
     restoreEnv();
   });
 
-  it('charges half the couple total for "paired" room preference', () => {
+  it('charges the couple (per-person) total for "paired" room preference', () => {
     process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
     process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '385000';
     initPaymentConfig();
-    expect(payments.tripTotalForRoomPreference('paired')).toBe(192500);
+    expect(payments.tripTotalForRoomPreference('paired')).toBe(385000);
     restoreEnv();
   });
 
-  it('caps the minimum deposit at the cheaper (couple, per-person) trip total', () => {
-    // Guards against a real footgun: an organizer setting a couple total
-    // below double the 100k default deposit would otherwise make the
-    // per-person minimum unpayable.
+  it('caps the minimum deposit at the cheaper of the two per-person trip totals', () => {
+    // Guards against a real footgun: an organizer setting a per-person total
+    // below the 100k default deposit would otherwise make the minimum unpayable.
     process.env.SINGLE_TRIP_TOTAL_AMOUNT_NGN = '425000';
-    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '150000'; // 75000/person
+    process.env.COUPLE_TRIP_TOTAL_AMOUNT_NGN = '75000';
     delete process.env.MIN_INITIAL_DEPOSIT_NGN;
     initPaymentConfig();
     expect(payments.minDepositForRoomPreference('paired')).toBe(75000);

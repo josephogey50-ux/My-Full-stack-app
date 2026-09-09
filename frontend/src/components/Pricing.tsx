@@ -18,7 +18,7 @@ const PLANS = [
   {
     name: 'Couple',
     price: '₦385,000',
-    suffix: 'per couple (₦192,500 each)',
+    suffix: 'per person',
     desc: 'Traveling with a designated partner and sharing a room — the better-value option.',
     featured: true,
   },

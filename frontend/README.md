@@ -30,7 +30,7 @@ src/
 - All registration form fields, validation, and the 3-step flow
   (Profile → Logistics → Checkout) matching `routes/register.js`.
 - Real WhatsApp contact number, document types, and the two real pricing
-  tiers (Single ₦425,000 per person / Couple ₦385,000 total, plus an
+  tiers (Single ₦425,000 per person / Couple ₦385,000 per person, plus an
   Installment option with a ₦100,000 min. deposit) — **not** the
   placeholder itinerary/pricing content from the Figma mockup. All payments
   go through Paystack (card, bank transfer, or USSD) — there is no manual/

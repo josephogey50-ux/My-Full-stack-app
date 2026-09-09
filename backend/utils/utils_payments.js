@@ -6,10 +6,11 @@ import logger from './logger.js';
 // Single source of truth for how much the trip costs. Read once at module
 // load; server.js's required-env check (see below) guarantees these are
 // valid positive numbers before the app ever starts accepting traffic.
-// Two tiers: a solo traveler (room "matched" with a same-sex roommate) pays
-// SINGLE_TRIP_TOTAL_NAIRA each; a "paired" couple pays COUPLE_TRIP_TOTAL_NAIRA
-// *combined*, split evenly since each partner still registers and pays as
-// their own Participant record — see tripTotalForRoomPreference() below.
+// Two tiers, both PER PERSON: a solo traveler (room "matched" with a
+// same-sex roommate) pays SINGLE_TRIP_TOTAL_NAIRA; a "paired" traveler
+// (part of a couple) pays COUPLE_TRIP_TOTAL_NAIRA — each partner still
+// registers and pays as their own Participant record, each at this rate.
+// See tripTotalForRoomPreference() below.
 // ── Live bindings, not one-shot constants ──
 // ES module `import` statements are hoisted: every statically-imported
 // module (this one included, via routes/register.js and routes/payments.js)
@@ -41,14 +42,14 @@ export function initPaymentConfig() {
   MIN_INITIAL_DEPOSIT_NGN = computeMinDepositFloor();
 }
 
-// A "paired" registrant owes half of the couple total; everyone else
+// A "paired" registrant owes the couple (per-person) total; everyone else
 // (including the schema default, 'match') owes the single total.
 export function tripTotalForRoomPreference(roomPreference) {
-  return roomPreference === 'paired' ? COUPLE_TRIP_TOTAL_NAIRA / 2 : SINGLE_TRIP_TOTAL_NAIRA;
+  return roomPreference === 'paired' ? COUPLE_TRIP_TOTAL_NAIRA : SINGLE_TRIP_TOTAL_NAIRA;
 }
 
 // Never allowed to exceed the participant's own trip total, so the cheaper
-// (couple, per-person) tier still works.
+// tier still works.
 export function minDepositForRoomPreference(roomPreference) {
   return Math.min(MIN_INITIAL_DEPOSIT_NGN, tripTotalForRoomPreference(roomPreference));
 }
@@ -121,7 +122,7 @@ export async function applyConfirmedPayment({ reference, amountNaira, channel })
   // so a solo and a paired registrant are compared against different totals
   // in the same $cond even though it's built from these two constants.
   const singleTotal = SINGLE_TRIP_TOTAL_NAIRA;
-  const couplePerPersonTotal = COUPLE_TRIP_TOTAL_NAIRA / 2;
+  const coupleTotal = COUPLE_TRIP_TOTAL_NAIRA;
 
   const updated = await Participant.findOneAndUpdate(
     {
@@ -158,7 +159,7 @@ export async function applyConfirmedPayment({ reference, amountNaira, channel })
               {
                 $gte: [
                   '$checkout.amountPaid',
-                  { $cond: [{ $eq: ['$logistics.roomPreference', 'paired'] }, couplePerPersonTotal, singleTotal] }
+                  { $cond: [{ $eq: ['$logistics.roomPreference', 'paired'] }, coupleTotal, singleTotal] }
                 ]
               },
               'Paid',
