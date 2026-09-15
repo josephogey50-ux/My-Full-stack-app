@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import heroBanner from '../assets/images/hero-banner.jpg'
+import Countdown from './Countdown'
 import { TRIP_DATES } from '../lib/constants'
 
 const TAGLINES = [
@@ -61,6 +62,10 @@ export default function Hero() {
         >
           {TAGLINES[index]}
         </p>
+
+        <div className="mb-9">
+          <Countdown />
+        </div>
 
         <div className="flex flex-wrap gap-3 items-center">
           <button
